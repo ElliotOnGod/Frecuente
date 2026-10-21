@@ -1,0 +1,170 @@
+<svg viewBox="0 0 1240 760" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, sans-serif">
+  <style>
+    .astro { fill: #ffffff; stroke: #4448a8; stroke-width: 2; }
+    .page { fill: #eef0ff; stroke: #4448a8; stroke-width: 2; }
+    .isla { fill: #e8f4ec; stroke: #2e7d4f; stroke-width: 2; }
+    .logic { fill: #fdeef1; stroke: #e94560; stroke-width: 2; }
+    .ext { fill: #f4efe9; stroke: #8b5e3c; stroke-width: 2; }
+    .title { font-size: 13px; font-weight: bold; fill: #12122b; }
+    .sub { font-size: 10.5px; fill: #444; }
+    .arrow { stroke: #999; stroke-width: 1.5; marker-end: url(#arrow); fill: none; }
+    .dash { stroke: #e94560; stroke-width: 1.4; stroke-dasharray: 5 4; marker-end: url(#arrowR); fill: none; }
+    .bus { stroke: #999; stroke-width: 1.5; fill: none; }
+    .label { font-size: 16px; font-weight: bold; fill: #12122b; }
+    .note { font-size: 11px; fill: #666; font-style: italic; }
+    .sec { font-size: 11px; font-weight: bold; fill: #4448a8; letter-spacing: .5px; }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#999"/></marker>
+    <marker id="arrowR" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#e94560"/></marker>
+  </defs>
+
+  <text x="20" y="30" class="label">UML de Componentes — Frontend Astro + islas de React (con inicio de sesión)</text>
+
+  <text x="20" y="58" class="sec">LAYOUT</text>
+  <rect x="20" y="66" width="258" height="56" rx="8" class="astro"/>
+  <text x="149.0" y="91.0" class="title" text-anchor="middle">TopBar.astro</text>
+  <text x="149.0" y="106.0" class="sub" text-anchor="middle">islas: SessionMenu, CartButton</text>
+  <rect x="480" y="66" width="280" height="56" rx="8" class="astro"/>
+  <text x="620.0" y="91.0" class="title" text-anchor="middle">BaseLayout.astro</text>
+  <text x="620.0" y="106.0" class="sub" text-anchor="middle">TopBar + &lt;slot/&gt; + Footer + modal</text>
+  <rect x="800" y="66" width="150" height="56" rx="8" class="astro"/>
+  <text x="875.0" y="98.0" class="title" text-anchor="middle">Footer.astro</text>
+  <rect x="980" y="66" width="236" height="56" rx="8" class="isla"/>
+  <text x="1098.0" y="91.0" class="title" text-anchor="middle">ProductDetailModal</text>
+  <text x="1098.0" y="106.0" class="sub" text-anchor="middle">createPortal · client:only</text>
+  <path d="M480,94 L282,94" class="arrow"/>
+  <path d="M760,94 L796,94" class="arrow"/>
+  <path d="M760,108 L830,108 L830,132 L1098,132 L1098,126" class="arrow"/>
+  <path d="M620,122 L620,150" class="bus"/>
+  <path d="M149,150 L1154,150" class="bus"/>
+  <path d="M149.0,150 L149.0,174" class="arrow"/>
+  <rect x="20" y="176" width="258" height="48" rx="8" class="page"/>
+  <text x="149.0" y="197.0" class="title" text-anchor="middle">index.astro</text>
+  <text x="149.0" y="212.0" class="sub" text-anchor="middle">/</text>
+  <path d="M350.0,150 L350.0,174" class="arrow"/>
+  <rect x="288" y="176" width="124" height="48" rx="8" class="page"/>
+  <text x="350.0" y="197.0" class="title" text-anchor="middle">categoria.astro</text>
+  <text x="350.0" y="212.0" class="sub" text-anchor="middle">/categoria?id=N</text>
+  <path d="M484.0,150 L484.0,174" class="arrow"/>
+  <rect x="422" y="176" width="124" height="48" rx="8" class="page"/>
+  <text x="484.0" y="197.0" class="title" text-anchor="middle">carrito.astro</text>
+  <text x="484.0" y="212.0" class="sub" text-anchor="middle">/carrito</text>
+  <path d="M618.0,150 L618.0,174" class="arrow"/>
+  <rect x="556" y="176" width="124" height="48" rx="8" class="page"/>
+  <text x="618.0" y="197.0" class="title" text-anchor="middle">checkout.astro</text>
+  <text x="618.0" y="212.0" class="sub" text-anchor="middle">/checkout</text>
+  <path d="M752.0,150 L752.0,174" class="arrow"/>
+  <rect x="690" y="176" width="124" height="48" rx="8" class="page"/>
+  <text x="752.0" y="197.0" class="title" text-anchor="middle">pedido.astro</text>
+  <text x="752.0" y="212.0" class="sub" text-anchor="middle">/pedido</text>
+  <path d="M886.0,150 L886.0,174" class="arrow"/>
+  <rect x="824" y="176" width="124" height="48" rx="8" class="page"/>
+  <text x="886.0" y="197.0" class="title" text-anchor="middle">login.astro</text>
+  <text x="886.0" y="212.0" class="sub" text-anchor="middle">/login</text>
+  <path d="M1020.0,150 L1020.0,174" class="arrow"/>
+  <rect x="958" y="176" width="124" height="48" rx="8" class="page"/>
+  <text x="1020.0" y="197.0" class="title" text-anchor="middle">registro.astro</text>
+  <text x="1020.0" y="212.0" class="sub" text-anchor="middle">/registro</text>
+  <path d="M1154.0,150 L1154.0,174" class="arrow"/>
+  <rect x="1092" y="176" width="124" height="48" rx="8" class="page"/>
+  <text x="1154.0" y="197.0" class="title" text-anchor="middle">cuenta.astro</text>
+  <text x="1154.0" y="212.0" class="sub" text-anchor="middle">/cuenta</text>
+  <rect x="20" y="270" width="124" height="48" rx="8" class="astro"/>
+  <text x="82.0" y="291.0" class="title" text-anchor="middle">Hero.astro</text>
+  <text x="82.0" y="306.0" class="sub" text-anchor="middle">estático (sin JS)</text>
+  <rect x="154" y="270" width="124" height="48" rx="8" class="isla"/>
+  <text x="216.0" y="291.0" class="title" text-anchor="middle">CatalogoHome</text>
+  <text x="216.0" y="306.0" class="sub" text-anchor="middle">client:load</text>
+  <rect x="288" y="270" width="124" height="48" rx="8" class="isla"/>
+  <text x="350.0" y="291.0" class="title" text-anchor="middle">CategoryDetail</text>
+  <text x="350.0" y="306.0" class="sub" text-anchor="middle">client:only</text>
+  <rect x="422" y="270" width="124" height="48" rx="8" class="isla"/>
+  <text x="484.0" y="291.0" class="title" text-anchor="middle">Cart</text>
+  <text x="484.0" y="306.0" class="sub" text-anchor="middle">client:only</text>
+  <rect x="556" y="270" width="124" height="48" rx="8" class="isla"/>
+  <text x="618.0" y="291.0" class="title" text-anchor="middle">Checkout</text>
+  <text x="618.0" y="306.0" class="sub" text-anchor="middle">client:only</text>
+  <rect x="690" y="270" width="124" height="48" rx="8" class="isla"/>
+  <text x="752.0" y="291.0" class="title" text-anchor="middle">OrderSuccess</text>
+  <text x="752.0" y="306.0" class="sub" text-anchor="middle">client:only</text>
+  <rect x="824" y="270" width="124" height="48" rx="8" class="isla"/>
+  <text x="886.0" y="291.0" class="title" text-anchor="middle">LoginForm</text>
+  <text x="886.0" y="306.0" class="sub" text-anchor="middle">client:only</text>
+  <rect x="958" y="270" width="124" height="48" rx="8" class="isla"/>
+  <text x="1020.0" y="291.0" class="title" text-anchor="middle">RegistroForm</text>
+  <text x="1020.0" y="306.0" class="sub" text-anchor="middle">client:only</text>
+  <rect x="1092" y="270" width="124" height="48" rx="8" class="isla"/>
+  <text x="1154.0" y="291.0" class="title" text-anchor="middle">Cuenta</text>
+  <text x="1154.0" y="306.0" class="sub" text-anchor="middle">client:only</text>
+  <path d="M82,224 L82,266" class="arrow"/>
+  <path d="M216,224 L216,266" class="arrow"/>
+  <path d="M350,224 L350,266" class="arrow"/>
+  <path d="M484,224 L484,266" class="arrow"/>
+  <path d="M618,224 L618,266" class="arrow"/>
+  <path d="M752,224 L752,266" class="arrow"/>
+  <path d="M886,224 L886,266" class="arrow"/>
+  <path d="M1020,224 L1020,266" class="arrow"/>
+  <path d="M1154,224 L1154,266" class="arrow"/>
+  <rect x="20" y="364" width="124" height="48" rx="8" class="astro"/>
+  <text x="82.0" y="385.0" class="title" text-anchor="middle">ContextSection</text>
+  <text x="82.0" y="400.0" class="sub" text-anchor="middle">.astro · children</text>
+  <rect x="154" y="364" width="124" height="48" rx="8" class="isla"/>
+  <text x="216.0" y="392.0" class="title" text-anchor="middle">Sidebar</text>
+  <rect x="288" y="364" width="124" height="48" rx="8" class="isla"/>
+  <text x="350.0" y="392.0" class="title" text-anchor="middle">CategoryGrid</text>
+  <rect x="422" y="364" width="124" height="48" rx="8" class="isla"/>
+  <text x="484.0" y="385.0" class="title" text-anchor="middle">Skeleton</text>
+  <text x="484.0" y="400.0" class="sub" text-anchor="middle">SkeletonGrid</text>
+  <rect x="556" y="364" width="124" height="48" rx="8" class="isla"/>
+  <text x="618.0" y="385.0" class="title" text-anchor="middle">ProductCard</text>
+  <text x="618.0" y="400.0" class="sub" text-anchor="middle">abre el modal</text>
+  <path d="M196,318 L90,360" class="arrow"/>
+  <path d="M216,318 L216,360" class="arrow"/>
+  <path d="M236,318 L338,360" class="arrow"/>
+  <path d="M256,318 L452,360" class="arrow"/>
+  <path d="M370,318 L492,360" class="arrow"/>
+  <path d="M390,318 L596,360" class="arrow"/>
+  <path d="M680,388 L1230,388 L1230,94 L1220,94" class="dash" style="stroke:#2e7d4f"/>
+  <text x="730" y="402" class="note">openProduct(id) → el modal del layout se abre (mismo store)</text>
+  <text x="20" y="470" class="sec">ESTADO Y DATOS (compartidos por todas las islas)</text>
+  <rect x="20" y="478" width="392" height="74" rx="8" class="logic"/>
+  <text x="216.0" y="496" class="title" text-anchor="middle">useStore (Zustand + persist → localStorage)</text>
+  <text x="216.0" y="511" class="sub" text-anchor="middle">sesion { token, usuario } · carrito · pedido</text>
+  <text x="216.0" y="525" class="sub" text-anchor="middle">selectedProductId (modal, no se persiste)</text>
+  <rect x="452" y="478" width="200" height="74" rx="8" class="logic"/>
+  <text x="552.0" y="496" class="title" text-anchor="middle">useGraphQLQuery</text>
+  <text x="552.0" y="511" class="sub" text-anchor="middle">hook propio: data, loading,</text>
+  <text x="552.0" y="525" class="sub" text-anchor="middle">error · opción omitir</text>
+  <rect x="692" y="478" width="250" height="74" rx="8" class="logic"/>
+  <text x="817.0" y="496" class="title" text-anchor="middle">lib/graphql.js · graphqlRequest</text>
+  <text x="817.0" y="511" class="sub" text-anchor="middle">fetch POST /graphql</text>
+  <text x="817.0" y="525" class="sub" text-anchor="middle">Authorization: Bearer &lt;token&gt;</text>
+  <path d="M652,515 L688,515" class="arrow"/>
+  <path d="M412,530 L460,530 L460,600 L817,600 L817,556" class="dash"/>
+  <text x="470" y="594" class="note">lee el token de la sesión; si expiró, cerrarSesion()</text>
+  <path d="M690,418 L690,440 L380,440 L380,474" class="dash"/>
+  <text x="174" y="434" class="note">las islas leen y actualizan el store (carrito, sesión, modal)</text>
+  <rect x="982" y="478" width="234" height="74" rx="8" class="ext"/>
+  <text x="1099.0" y="496" class="title" text-anchor="middle">Backend FastAPI</text>
+  <text x="1099.0" y="511" class="sub" text-anchor="middle">Strawberry · /graphql</text>
+  <text x="1099.0" y="525" class="sub" text-anchor="middle">auth.py: PBKDF2 + JWT</text>
+  <path d="M942,515 L978,515" class="arrow"/>
+  <rect x="982" y="590" width="234" height="62" rx="8" class="ext"/>
+  <text x="1099" y="610" class="title" text-anchor="middle">MongoDB</text>
+  <text x="1099" y="626" class="sub" text-anchor="middle">categorias · productos · usuarios</text>
+  <text x="1099" y="641" class="sub" text-anchor="middle">pedidos · contadores</text>
+  <path d="M1099,552 L1099,586" class="arrow"/>
+  <text x="20" y="694" class="sec">LEYENDA</text>
+  <rect x="110" y="681" width="18" height="14" rx="3" class="astro"/>
+  <text x="136" y="693" class="sub">.astro estático (HTML, sin JavaScript)</text>
+  <rect x="335" y="681" width="18" height="14" rx="3" class="page"/>
+  <text x="361" y="693" class="sub">Página = ruta real</text>
+  <rect x="560" y="681" width="18" height="14" rx="3" class="isla"/>
+  <text x="586" y="693" class="sub">Isla de React (interactiva)</text>
+  <rect x="785" y="681" width="18" height="14" rx="3" class="logic"/>
+  <text x="811" y="693" class="sub">Estado / lógica compartida</text>
+  <rect x="1010" y="681" width="18" height="14" rx="3" class="ext"/>
+  <text x="1036" y="693" class="sub">Backend y base de datos</text>
+  <text x="20" y="726" class="note">client:load = se pinta en el HTML y se hidrata al cargar · client:only = solo existe en el navegador (depende de la URL, la sesión o el carrito guardados)</text>
+</svg>

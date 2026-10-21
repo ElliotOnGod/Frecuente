@@ -1,0 +1,11 @@
+---
+/** /admin/pedidos — panel de administración: Pedidos. */
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import AdminPedidos from "../../components/islas/admin/AdminPedidos.jsx";
+---
+<AdminLayout titulo="Pedidos">
+  <!-- client:only: depende de la sesión de admin guardada en el navegador -->
+  <AdminPedidos client:only="react">
+    <h1 slot="fallback">Pedidos</h1>
+  </AdminPedidos>
+</AdminLayout>

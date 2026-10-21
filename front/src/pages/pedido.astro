@@ -1,0 +1,12 @@
+---
+/** /pedido?id=N — detalle del pedido, estado del pago e instrucciones. */
+import BaseLayout from "../layouts/BaseLayout.astro";
+import OrderSuccess from "../components/islas/OrderSuccess.jsx";
+---
+<BaseLayout titulo="Tu pedido — Frecuente">
+  <div class="cf-contenedor">
+    <OrderSuccess client:only="react">
+      <h1 slot="fallback">Tu pedido</h1>
+    </OrderSuccess>
+  </div>
+</BaseLayout>

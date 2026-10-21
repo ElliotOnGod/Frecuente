@@ -1,0 +1,11 @@
+---
+/** /admin/caja — panel de administración: Caja. */
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import AdminCaja from "../../components/islas/admin/AdminCaja.jsx";
+---
+<AdminLayout titulo="Caja">
+  <!-- client:only: depende de la sesión de admin guardada en el navegador -->
+  <AdminCaja client:only="react">
+    <h1 slot="fallback">Caja</h1>
+  </AdminCaja>
+</AdminLayout>

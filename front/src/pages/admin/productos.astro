@@ -1,0 +1,11 @@
+---
+/** /admin/productos — panel de administración: Productos. */
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import AdminProductos from "../../components/islas/admin/AdminProductos.jsx";
+---
+<AdminLayout titulo="Productos">
+  <!-- client:only: depende de la sesión de admin guardada en el navegador -->
+  <AdminProductos client:only="react">
+    <h1 slot="fallback">Productos</h1>
+  </AdminProductos>
+</AdminLayout>

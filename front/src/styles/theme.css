@@ -1,0 +1,755 @@
+/* =====================================================
+   theme.css — Sistema Café Frecuente
+   Versión: 0.1 | Autor: Jose Fernando Leon Lopez (23100146),
+                         Elliot Garcia Lopez (22300923),
+                         Jehu Uribe Bermudez (23100139)
+   Fecha: 16/09/2026
+   Manual de referencia: Manual de Identidad Digital — Café Frecuente v1.0
+
+   Nota: los números de sección que aparecen en cada bloque son los
+   de NUESTRO manual (ej. Color = sección 5, Accesibilidad = sección 11),
+   para que se puedan buscar directo en el documento.
+
+   Índice:
+   01. Identidad e introducción (secciones 1-2)
+   02. Logotipo (secciones 3-4)
+   03. Color y modo oscuro (secciones 5 y 11.1)
+   04. Tipografía (sección 6)
+   05. Iconografía (sección 7)
+   06. Imágenes y multimedia (sección 8)
+   07. Voz y tono (sección 9) — solo comentario
+   08. Aplicaciones: componentes (sección 10)
+   09. Accesibilidad (sección 11)
+   10. Gobernanza (sección 13) — solo comentario
+   ===================================================== */
+
+/* Carga de fuentes (manual 12.1: "Tipografías Poppins e Inter cargadas
+   desde la hoja de estilos global"). @import tiene que ir antes de
+   cualquier otra regla. */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=JetBrains+Mono:wght@400&family=Poppins:wght@400;500;600&display=swap");
+
+
+/* =====================================================
+   01. IDENTIDAD E INTRODUCCIÓN (manual secciones 1-2)
+   -----------------------------------------------------
+   Propósito: que todo el equipo use los mismos colores, fuentes y
+   tamaños sin tener que interpretar nada (manual 1.1).
+
+   Principios rectores (manual 1.4):
+   1. Calidez  2. Claridad  3. Confianza  4. Consistencia  5. Accesibilidad
+
+   Personalidad (manual 2.4): cercano, confiable, ordenado, cálido y actual.
+   NO debe verse lujoso, saturado ni con urgencia agresiva de venta.
+
+   Prefijo de clases: cf- (manual 2.2, acrónimo autorizado "CF").
+   ===================================================== */
+
+
+/* =====================================================
+   02. LOGOTIPO (manual secciones 3 y 4)
+   -----------------------------------------------------
+   Archivo maestro: /docs/identidad/logo/ (SVG; PNG solo si la
+   plataforma no acepta vectores).
+
+   ESTE CSS NUNCA MODIFICA EL LOGO: no se le aplican filtros, sombras,
+   rotaciones, bordes ni cambios de color (manual 4.2). Solo se
+   controla su tamaño y su área de protección.
+   ===================================================== */
+:root {
+  --logo-alto-header: 24px;       /* manual 10.1: logo de 24 px en encabezado */
+  --logo-ancho-minimo: 120px;     /* manual 3.4: versión horizontal */
+  --logo-isotipo-minimo: 24px;    /* manual 3.4: isotipo solo */
+  --logo-area-proteccion: var(--logo-alto-header); /* manual 3.3: X = altura del isotipo */
+}
+
+
+/* =====================================================
+   03. COLOR (manual sección 5) + CONTRASTE (manual 11.1)
+   ===================================================== */
+:root {
+  /* 5.1 Paleta principal */
+  --color-primario: #3E2A20;          /* Espresso */
+  --color-secundario: #8B5E3C;        /* Tostado */
+  --color-acento: #4F7A52;            /* Hoja */
+  --color-fondo: #F3E5D4;             /* Crema */
+  --color-superficie: #FFFFFF;        /* Blanco: tarjetas y campos */
+  --color-texto: #1F1B18;             /* Carbón */
+  --color-texto-secundario: #6B625C;  /* Gris Humo */
+
+  /* Texto que va encima del color primario */
+  --color-texto-sobre-primario: #F3E5D4; /* Crema */
+  --color-texto-sobre-acento: #FFFFFF;
+
+  /* 5.2 Colores semánticos */
+  --color-success: #2E7D4F;  /* Verde Confirmación */
+  --color-warning: #B7791F;  /* Ámbar */
+  --color-error: #B3261E;    /* Rojo Alerta */
+  --color-info: #2B6CB0;     /* Azul Aviso */
+  --color-neutro: #E5DED6;   /* Gris Neutro: separadores, disabled */
+
+  /* 5.3 Estados */
+  --color-primario-hover: #553B2E;   /* aclara 10 % */
+  --color-primario-active: #2C1D16;  /* oscurece 10 % */
+  --color-focus: #8B5E3C;            /* Tostado */
+  --opacidad-disabled: 0.6;
+}
+
+/* 5.4 Modo oscuro (se activa con la preferencia del sistema operativo) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-fondo: #1F1B18;             /* Crema → Carbón */
+    --color-superficie: #2A2320;        /* tarjetas blancas → #2A2320 */
+    --color-texto: #F3E5D4;             /* Carbón → Crema */
+    --color-texto-secundario: #B3A79E;  /* Gris Humo → #B3A79E */
+    --color-primario: #C69C6D;          /* Espresso aclarado */
+
+    /* El manual no dice el color del texto sobre #C69C6D. Crema encima
+       daría muy poco contraste, por eso se usa Carbón (6.82:1). */
+    --color-texto-sobre-primario: #1F1B18;
+
+    /* Hover/active: misma regla de ±10 % del manual 5.3 aplicada al primario claro */
+    --color-primario-hover: #D1AC82;
+    --color-primario-active: #B08659;
+
+    /* Tostado sobre fondo oscuro no llega a 3:1, el foco usa el primario claro */
+    --color-secundario: #C69C6D;
+    --color-focus: #C69C6D;
+
+    /* Semánticos: mismo tono, solo más luminosos (regla del manual 5.4) */
+    --color-success: #5CB27F;
+    --color-warning: #E0A542;
+    --color-error: #EF6F66;
+    --color-info: #6BA3DF;
+    --color-neutro: #3A322D;
+  }
+}
+
+/* -----------------------------------------------------
+   CONTRASTE DOCUMENTADO (manual 11.1 — WCAG 2.1 AA)
+   Calculado con la fórmula de luminancia relativa de WCAG
+   (misma que usa WebAIM Contrast Checker).
+   Mínimo: 4.5:1 texto normal | 3:1 texto ≥ 24px y elementos de interfaz
+
+   MODO CLARO
+   Carbón #1F1B18 sobre Crema #F3E5D4 ........ 13.82:1  ✔ AA
+   Carbón #1F1B18 sobre Blanco #FFFFFF ....... 17.10:1  ✔ AA
+   Crema #F3E5D4 sobre Espresso #3E2A20 ...... 10.90:1  ✔ AA
+   Crema #F3E5D4 sobre hover #553B2E ......... 8.27:1   ✔ AA
+   Crema #F3E5D4 sobre active #2C1D16 ........ 13.11:1  ✔ AA
+   Gris Humo #6B625C sobre Crema #F3E5D4 ..... 4.81:1   ✔ AA
+   Gris Humo #6B625C sobre Blanco #FFFFFF .... 5.95:1   ✔ AA
+   Tostado #8B5E3C sobre Blanco #FFFFFF ...... 5.58:1   ✔ AA (enlaces en tarjetas)
+   Blanco #FFFFFF sobre Hoja #4F7A52 ......... 4.96:1   ✔ AA (insignias)
+   Rojo #B3261E sobre Blanco ................. 6.54:1   ✔ AA
+   Verde #2E7D4F sobre Blanco ................ 5.05:1   ✔ AA
+   Azul #2B6CB0 sobre Blanco ................. 5.42:1   ✔ AA
+   Ámbar #B7791F sobre Blanco ................ 3.64:1   ✘ para texto → solo borde e icono
+
+   Nota: el manual decía ~14:1, ~12:1 y ~5:1; los valores exactos son
+   13.82, 10.90 y 4.81. Todos siguen cumpliendo AA.
+   Tostado sobre Crema (4.51:1) queda justo en el límite; se respeta la
+   regla del manual de no usarlo en texto pequeño.
+
+   MODO OSCURO
+   Crema #F3E5D4 sobre Carbón #1F1B18 ........ 13.82:1  ✔ AA
+   Crema #F3E5D4 sobre tarjeta #2A2320 ....... 12.48:1  ✔ AA
+   #B3A79E sobre #2A2320 ..................... 6.57:1   ✔ AA
+   #C69C6D sobre #2A2320 ..................... 6.16:1   ✔ AA
+   Carbón #1F1B18 sobre botón #C69C6D ........ 6.82:1   ✔ AA
+   Semánticos sobre #2A2320 .................. 5.25:1 a 7.08:1 ✔ AA
+   ----------------------------------------------------- */
+
+
+/* =====================================================
+   04. TIPOGRAFÍA (manual sección 6)
+   ===================================================== */
+:root {
+  /* 6.1 Familias con sustitutos */
+  --font-principal: "Poppins", -apple-system, "Segoe UI", Roboto, sans-serif;  /* títulos */
+  --font-secundaria: "Inter", -apple-system, "Segoe UI", Roboto, sans-serif;   /* cuerpo */
+  --font-codigo: "JetBrains Mono", ui-monospace, Consolas, monospace;
+
+  /* 6.1 Pesos autorizados */
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600; /* solo Poppins */
+  --font-weight-bold: 700;     /* solo Inter */
+
+  /* 6.2 Escala (px del manual convertidos a rem, 1rem = 16px) */
+  --font-size-display: 2.5rem;   /* 40px */
+  --font-size-h1: 2rem;          /* 32px */
+  --font-size-h2: 1.5rem;        /* 24px */
+  --font-size-h3: 1.25rem;       /* 20px */
+  --font-size-h4: 1.125rem;      /* 18px */
+  --font-size-h5: 1rem;          /* 16px */
+  --font-size-h6: 0.875rem;      /* 14px */
+  --font-size-base: 1rem;        /* Body 16px */
+  --font-size-sm: 0.875rem;      /* Label y Code 14px */
+  --font-size-caption: 0.8125rem;/* Caption 13px */
+  --font-size-xs: 0.75rem;       /* Label de navegación móvil 12px (manual 10.2) */
+
+  /* 6.2 Interlineados */
+  --line-height-display: 3rem;    /* 48px */
+  --line-height-h1: 2.5rem;       /* 40px */
+  --line-height-h2: 2rem;         /* 32px */
+  --line-height-h3: 1.75rem;      /* 28px */
+  --line-height-h4: 1.625rem;     /* 26px */
+  --line-height-base: 1.5rem;     /* 24px: Body y H5 */
+  --line-height-sm: 1.25rem;      /* 20px: Label y H6 */
+  --line-height-caption: 1.125rem;/* 18px */
+  --line-height-code: 1.375rem;   /* 22px */
+
+  /* 6.3 Longitud de línea: 45 a 75 caracteres */
+  --medida-texto: 75ch;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-fondo);
+  color: var(--color-texto);
+  font-family: var(--font-secundaria);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-base);
+  text-align: left; /* 6.3: sin texto justificado */
+}
+
+.cf-display {
+  font-family: var(--font-principal);
+  font-size: var(--font-size-display);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-display);
+}
+
+h1 {
+  font-family: var(--font-principal);
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-h1);
+}
+
+h2 {
+  font-family: var(--font-principal);
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-h2);
+}
+
+h3 {
+  font-family: var(--font-principal);
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-h3);
+}
+
+h4 {
+  font-family: var(--font-principal);
+  font-size: var(--font-size-h4);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-h4);
+}
+
+h5 {
+  font-family: var(--font-secundaria);
+  font-size: var(--font-size-h5);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-base);
+}
+
+h6 {
+  font-family: var(--font-secundaria);
+  font-size: var(--font-size-h6);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-sm);
+}
+
+p {
+  max-width: var(--medida-texto);
+}
+
+/* 6.3: sin cursiva para énfasis, se usa peso */
+em {
+  font-style: normal;
+  font-weight: var(--font-weight-medium);
+}
+
+.cf-caption {
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  color: var(--color-texto-secundario);
+}
+
+.cf-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-sm);
+}
+
+code {
+  font-family: var(--font-codigo);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-code);
+}
+
+
+/* =====================================================
+   05. ICONOGRAFÍA (manual sección 7)
+   -----------------------------------------------------
+   Biblioteca oficial: Lucide (lucide-react) — https://lucide.dev
+   Estilo lineal, sin rellenos, sin sombras ni degradados.
+   ===================================================== */
+:root {
+  --icon-weight: 2;       /* 7.1: trazo de 2px sin excepciones */
+  --icon-size-sm: 16px;   /* etiquetas y tablas */
+  --icon-size-md: 20px;   /* botones y campos */
+  --icon-size: 24px;      /* estándar: navegación y tarjetas */
+  --icon-size-lg: 32px;   /* estados vacíos y mensajes */
+  --icon-separacion: 8px; /* 7.2: 8px entre icono y texto */
+}
+
+.cf-icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  fill: none;
+  stroke: currentColor; /* 7.1: hereda el color del texto */
+  stroke-width: var(--icon-weight);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.cf-icon--sm { width: var(--icon-size-sm); height: var(--icon-size-sm); }
+.cf-icon--md { width: var(--icon-size-md); height: var(--icon-size-md); }
+.cf-icon--lg { width: var(--icon-size-lg); height: var(--icon-size-lg); }
+
+
+/* =====================================================
+   06. IMÁGENES Y MULTIMEDIA (manual sección 8)
+   ===================================================== */
+:root {
+  --radius-sm: 4px;
+  --radius-md: 8px; /* 10.1: único radio definido en el manual (botones) */
+  --aspect-producto: 1 / 1;  /* 8.1: foto de catálogo */
+  --aspect-portada: 16 / 9;  /* 8.1: imagen de portada */
+
+  /* 8.1: tratamiento permitido solo brillo y contraste.
+     Valor 1 = sin cambio. Prohibidos otros filtros de color. */
+  --img-brillo: 1;
+  --img-contraste: 1;
+
+  /* 8.3 y 11.4: animaciones entre 150 y 300 ms con ease-out */
+  --transicion-rapida: 150ms;
+  --transicion-lenta: 300ms;
+  --transicion-curva: ease-out;
+
+  /* Capa de contraste para texto sobre foto (6.3).
+     No cambia en modo oscuro porque la foto es la misma. */
+  --color-capa-foto: rgba(31, 27, 24, 0.6); /* Carbón al 60 % */
+  --color-texto-sobre-capa: #F3E5D4;         /* Crema */
+  --color-portada-respaldo: #3E2A20;         /* Espresso, mientras carga la foto */
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  filter: brightness(var(--img-brillo)) contrast(var(--img-contraste));
+}
+
+.cf-img-producto {
+  aspect-ratio: var(--aspect-producto);
+  object-fit: cover;
+  width: 100%;
+  background-color: var(--color-neutro); /* se ve mientras carga la foto */
+}
+
+.cf-img-portada {
+  aspect-ratio: var(--aspect-portada);
+  object-fit: cover;
+  width: 100%;
+}
+
+/* Lo siguiente NO es CSS y se documenta aquí (manual 8.1 y 8.3):
+   - Toda imagen lleva atributo alt descriptivo (es HTML).
+   - Fotos en WebP con respaldo JPG, máximo 200 KB (es exportación del archivo).
+   - Video MP4 H.264 / WebM, máximo 5 MB y 30 s (es formato del archivo).
+   - Subtítulos obligatorios en .vtt en español con <track> (es HTML).
+   - Nunca autoplay con sonido y controles visibles (atributos de <video>).
+   - El logotipo no se anima. */
+
+
+/* =====================================================
+   07. VOZ Y TONO (manual sección 9)
+   -----------------------------------------------------
+   No genera CSS porque es redacción, no apariencia.
+   Se demuestra en los textos de ejemplo.html:
+   - Hablar de tú, frases cortas, voz activa.
+   - Sin emojis, sin "¡!!", sin mayúsculas para enfatizar.
+   - Términos oficiales: carrito, pedido, presentación, envío, cuenta.
+   ===================================================== */
+
+
+/* =====================================================
+   08. APLICACIONES: COMPONENTES (manual sección 10)
+   Construidos solo con las variables de arriba.
+   ===================================================== */
+:root {
+  --espacio-xs: 4px;
+  --espacio-sm: 8px;   /* separación mínima entre botones (10.1) */
+  --espacio-md: 16px;
+  --espacio-lg: 24px;  /* márgenes laterales (10.1) */
+  --espacio-xl: 48px;
+
+  --ancho-maximo: 1200px;   /* 10.1 */
+  --alto-control: 44px;     /* 10.1 botones y 10.2 área táctil */
+  --borde-fino: 1px;
+  --borde-seleccion: 3px;   /* 5.3 selected */
+  --desplazamiento-active: 1px; /* 5.3 active baja 1px */
+}
+
+.cf-contenedor {
+  max-width: var(--ancho-maximo);
+  margin: 0 auto;
+  padding: 0 var(--espacio-lg);
+}
+
+/* --- Navegación / encabezado (10.1) --- */
+.cf-header {
+  background-color: var(--color-fondo);
+  border-bottom: var(--borde-fino) solid var(--color-neutro);
+}
+
+.cf-header__barra {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--espacio-md);
+  min-height: var(--alto-control);
+  padding-top: var(--espacio-sm);
+  padding-bottom: var(--espacio-sm);
+}
+
+.cf-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--espacio-sm);
+  min-width: var(--logo-ancho-minimo);
+  height: var(--logo-alto-header);
+  color: var(--color-texto);
+  text-decoration: none;
+  font-family: var(--font-principal);
+}
+
+.cf-nav {
+  display: flex;
+  gap: var(--espacio-lg);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cf-nav__link {
+  display: flex;
+  align-items: center;
+  gap: var(--icon-separacion);
+  min-height: var(--alto-control);
+  color: var(--color-texto);
+  text-decoration: none;
+  font-weight: var(--font-weight-medium);
+}
+
+.cf-nav__link:hover {
+  color: var(--color-secundario);
+}
+
+/* 5.3 Selected: borde izquierdo de 3px en primario */
+.cf-nav__link[aria-current="page"] {
+  border-left: var(--borde-seleccion) solid var(--color-primario);
+  padding-left: var(--espacio-sm);
+}
+
+.cf-acciones {
+  display: flex;
+  gap: var(--espacio-sm);
+}
+
+/* --- Botón (5.3 y 10.1) --- */
+.cf-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--icon-separacion);
+  min-height: var(--alto-control);
+  min-width: var(--alto-control);
+  padding: 0 var(--espacio-lg);
+  border: var(--borde-fino) solid var(--color-primario);
+  border-radius: var(--radius-md);
+  background-color: var(--color-primario);
+  color: var(--color-texto-sobre-primario);
+  font-family: var(--font-secundaria);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-sm);
+  cursor: pointer;
+  transition: background-color var(--transicion-rapida) var(--transicion-curva),
+              transform var(--transicion-rapida) var(--transicion-curva);
+}
+
+.cf-btn:hover {
+  background-color: var(--color-primario-hover);
+  border-color: var(--color-primario-hover);
+}
+
+.cf-btn:active {
+  background-color: var(--color-primario-active);
+  border-color: var(--color-primario-active);
+  transform: translateY(var(--desplazamiento-active));
+}
+
+/* Botón secundario: solo borde */
+.cf-btn--secundario {
+  background-color: transparent;
+  color: var(--color-texto);
+}
+
+.cf-btn--secundario:hover {
+  background-color: var(--color-neutro);
+  border-color: var(--color-primario);
+}
+
+/* Botón de solo icono (7.3: siempre con aria-label en el HTML) */
+.cf-btn--icono {
+  padding: 0;
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--color-texto);
+}
+
+.cf-btn--icono:hover {
+  background-color: var(--color-neutro);
+  border-color: transparent;
+}
+
+/* 5.3 Disabled */
+.cf-btn:disabled,
+.cf-btn[aria-disabled="true"] {
+  background-color: var(--color-neutro);
+  border-color: var(--color-neutro);
+  color: var(--color-texto-secundario);
+  opacity: var(--opacidad-disabled);
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* --- Input (11.2: etiqueta siempre visible) --- */
+.cf-campo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espacio-xs);
+  margin-bottom: var(--espacio-md);
+}
+
+.cf-input {
+  min-height: var(--alto-control);
+  padding: 0 var(--espacio-md);
+  border: var(--borde-fino) solid var(--color-texto-secundario);
+  border-radius: var(--radius-md);
+  background-color: var(--color-superficie);
+  color: var(--color-texto);
+  font-family: var(--font-secundaria);
+  font-size: var(--font-size-base);
+}
+
+.cf-input:disabled {
+  background-color: var(--color-neutro);
+  cursor: not-allowed;
+}
+
+.cf-input[aria-invalid="true"] {
+  border-color: var(--color-error);
+}
+
+.cf-ayuda {
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-sm);
+  color: var(--color-texto-secundario);
+}
+
+/* --- Tarjeta de producto (10.1) --- */
+.cf-catalogo {
+  display: grid;
+  grid-template-columns: 1fr; /* teléfono: 1 columna */
+  gap: var(--espacio-lg);
+}
+
+/* Los breakpoints no pueden usar var() dentro de @media (limitación de CSS).
+   Valores del manual 12.3: 768 px tableta y 1200 px escritorio. */
+@media (min-width: 768px) {
+  .cf-catalogo { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (min-width: 1200px) {
+  .cf-catalogo { grid-template-columns: repeat(4, 1fr); }
+}
+
+.cf-card {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-superficie);
+  border: var(--borde-fino) solid var(--color-neutro);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.cf-card__cuerpo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espacio-xs);
+  padding: var(--espacio-md);
+}
+
+.cf-card__titulo {
+  margin: 0;
+}
+
+.cf-card__precio {
+  font-weight: var(--font-weight-bold); /* Body Bold (10.1) */
+}
+
+/* Insignia de disponibilidad (11.3: lleva la palabra, no solo color) */
+.cf-insignia {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--espacio-xs);
+  align-self: flex-start;
+  padding: 0 var(--espacio-sm);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-acento);
+  color: var(--color-texto-sobre-acento);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-sm);
+}
+
+.cf-insignia--agotado {
+  background-color: var(--color-neutro);
+  color: var(--color-texto);
+}
+
+/* --- Mensajes de estado (9.2 y 11.3: color + icono + texto) --- */
+.cf-alerta {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--icon-separacion);
+  padding: var(--espacio-md);
+  margin-bottom: var(--espacio-sm);
+  background-color: var(--color-superficie);
+  border: var(--borde-fino) solid var(--color-neutro);
+  border-left: var(--borde-seleccion) solid var(--color-info);
+  border-radius: var(--radius-md);
+  color: var(--color-texto); /* el texto siempre Carbón/Crema, no el semántico */
+}
+
+.cf-alerta .cf-icon { color: var(--color-info); }
+
+.cf-alerta--success { border-left-color: var(--color-success); }
+.cf-alerta--success .cf-icon { color: var(--color-success); }
+
+.cf-alerta--warning { border-left-color: var(--color-warning); }
+.cf-alerta--warning .cf-icon { color: var(--color-warning); }
+
+.cf-alerta--error { border-left-color: var(--color-error); }
+.cf-alerta--error .cf-icon { color: var(--color-error); }
+
+/* --- Portada con capa de contraste (6.3 y 8.1) --- */
+.cf-portada {
+  display: flex;
+  align-items: flex-end;
+  aspect-ratio: var(--aspect-portada);
+  border-radius: var(--radius-md);
+  background-color: var(--color-portada-respaldo);
+}
+
+.cf-portada__texto {
+  width: 100%;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  padding: var(--espacio-lg);
+  background-color: var(--color-capa-foto);
+  color: var(--color-texto-sobre-capa);
+}
+
+/* --- Pie de página (10.1) --- */
+.cf-footer {
+  margin-top: var(--espacio-xl);
+  padding: var(--espacio-lg) 0;
+  background-color: var(--color-primario);
+  color: var(--color-texto-sobre-primario);
+}
+
+.cf-footer a,
+.cf-footer .cf-caption {
+  color: var(--color-texto-sobre-primario);
+}
+
+
+/* =====================================================
+   09. ACCESIBILIDAD (manual sección 11)
+   ===================================================== */
+
+/* 11.3: enlaces dentro de párrafo se distinguen con subrayado, no solo color */
+p a,
+.cf-alerta a {
+  color: var(--color-secundario);
+  text-decoration: underline;
+}
+
+/* 5.3 y 12.2: foco visible de 2px separado 2px. Nunca se quita. */
+:root {
+  --focus-grosor: 2px;
+  --focus-separacion: 2px;
+}
+
+:focus-visible {
+  outline: var(--focus-grosor) solid var(--color-focus);
+  outline-offset: var(--focus-separacion);
+}
+
+/* 11.4: con movimiento reducido se quitan desplazamientos y quedan
+   solo cambios de opacidad */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --desplazamiento-active: 0px;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-property: opacity, background-color, color;
+    scroll-behavior: auto;
+  }
+}
+
+/* Otras reglas de 11 que no son CSS:
+   - Revisión con simulador de daltonismo antes de cada entrega (proceso).
+   - Sin carruseles automáticos (comportamiento/JS).
+   - Ampliar texto a 200 %: se cumple usando rem en la escala tipográfica. */
+
+
+/* =====================================================
+   10. GOBERNANZA (manual sección 13)
+   -----------------------------------------------------
+   No es CSS: es un proceso del equipo. Se refleja en la cabecera
+   de este archivo (sistema, versión, autor, fecha).
+
+   - Responsable de identidad: Jose Fernando Leon Lopez (13.1).
+   - Versionado MAYOR.MENOR (13.3): menor para ajustes, mayor si
+     cambia la paleta o el logotipo.
+   - Todo cambio a este archivo se pide por escrito y se registra
+     en la tabla de control de versiones del manual (13.2).
+   - Regla del archivo: prohibido !important y valores sueltos
+     fuera de variables.
+
+   Historial:
+   0.1 | 16/09/2026 | Primera traducción del manual v1.0 a CSS
+   ===================================================== */

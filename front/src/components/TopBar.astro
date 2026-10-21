@@ -1,0 +1,48 @@
+---
+/** TopBar — marca, enlace a inicio, sesión y acceso al carrito (islas). */
+import CartButton from "./islas/CartButton.jsx";
+import SessionMenu from "./islas/SessionMenu.jsx";
+
+const ruta = Astro.url.pathname;
+---
+<header class="cf-header">
+  <div class="cf-contenedor cf-header__barra">
+    <a class="cf-logo" href="/">
+      <span aria-hidden="true">☕</span>
+      <strong>Frecuente</strong>
+    </a>
+
+    <nav aria-label="Principal">
+      <ul class="cf-nav">
+        <li>
+          <a class="cf-nav__link" href="/" aria-current={ruta === "/" ? "page" : undefined}>
+            Inicio
+          </a>
+        </li>
+        <li>
+          <a
+            class="cf-nav__link"
+            href="/membresias"
+            aria-current={ruta.startsWith("/membresias") || ruta.startsWith("/mi-membresia") ? "page" : undefined}
+          >
+            Membresías
+          </a>
+        </li>
+      </ul>
+    </nav>
+
+    <div class="cf-acciones">
+      <!-- client:only: depende de la sesión guardada en el navegador -->
+      <SessionMenu client:only="react">
+        <a slot="fallback" class="cf-btn cf-btn--icono cf-sesion" href="/login">Iniciar sesión</a>
+      </SessionMenu>
+
+      <!-- client:only: el contador depende del carrito guardado en el navegador -->
+      <CartButton client:only="react">
+        <a slot="fallback" class="cf-btn cf-btn--secundario" href="/carrito">
+          <span aria-hidden="true">🛒</span> Carrito
+        </a>
+      </CartButton>
+    </div>
+  </div>
+</header>

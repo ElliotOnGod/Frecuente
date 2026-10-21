@@ -1,0 +1,18 @@
+---
+/** /categoria?id=N — productos de una categoría. */
+import BaseLayout from "../layouts/BaseLayout.astro";
+import CategoryDetail from "../components/islas/CategoryDetail.jsx";
+import { SkeletonGrid } from "../components/islas/Skeleton.jsx";
+---
+<BaseLayout titulo="Categoría — Frecuente">
+  <div class="cf-contenedor">
+    <CategoryDetail client:only="react">
+      <!-- Lo que se ve mientras carga la isla -->
+      <div slot="fallback">
+        <a class="cf-link" href="/">← Volver al inicio</a>
+        <h1>Cargando…</h1>
+        <SkeletonGrid cantidad={4} />
+      </div>
+    </CategoryDetail>
+  </div>
+</BaseLayout>

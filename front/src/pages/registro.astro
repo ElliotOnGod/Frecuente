@@ -1,0 +1,12 @@
+---
+/** /registro — Crea tu cuenta. */
+import BaseLayout from "../layouts/BaseLayout.astro";
+import RegistroForm from "../components/islas/RegistroForm.jsx";
+---
+<BaseLayout titulo="Crea tu cuenta — Frecuente">
+  <div class="cf-contenedor">
+    <RegistroForm client:only="react">
+      <h1 slot="fallback">Crea tu cuenta</h1>
+    </RegistroForm>
+  </div>
+</BaseLayout>

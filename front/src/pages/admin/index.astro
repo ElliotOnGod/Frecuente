@@ -1,0 +1,11 @@
+---
+/** /admin — panel de administración: Resumen. */
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import AdminResumen from "../../components/islas/admin/AdminResumen.jsx";
+---
+<AdminLayout titulo="Resumen">
+  <!-- client:only: depende de la sesión de admin guardada en el navegador -->
+  <AdminResumen client:only="react">
+    <h1 slot="fallback">Resumen</h1>
+  </AdminResumen>
+</AdminLayout>

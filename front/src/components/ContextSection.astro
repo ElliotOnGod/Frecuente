@@ -1,0 +1,16 @@
+---
+/** ContextSection — banda de beneficios del home. Estática. */
+const beneficios = [
+  { titulo: "Tostado de la semana", texto: "Tostamos los martes y enviamos al siguiente día hábil." },
+  { titulo: "Envío en Guadalajara", texto: "Entrega en zona metropolitana en 24 a 48 horas." },
+  { titulo: "También para tu oficina", texto: "Pide en volumen y te cotizamos la recompra mensual." },
+];
+---
+<section class="cf-contexto" aria-label="Por qué comprar aquí">
+  {beneficios.map((b) => (
+    <div>
+      <h3>{b.titulo}</h3>
+      <p>{b.texto}</p>
+    </div>
+  ))}
+</section>

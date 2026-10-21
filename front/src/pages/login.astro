@@ -1,0 +1,12 @@
+---
+/** /login — Inicia sesión. */
+import BaseLayout from "../layouts/BaseLayout.astro";
+import LoginForm from "../components/islas/LoginForm.jsx";
+---
+<BaseLayout titulo="Inicia sesión — Frecuente">
+  <div class="cf-contenedor">
+    <LoginForm client:only="react">
+      <h1 slot="fallback">Inicia sesión</h1>
+    </LoginForm>
+  </div>
+</BaseLayout>

@@ -1,0 +1,12 @@
+---
+/** /checkout — confirmación y registro del pedido (mutation). */
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Checkout from "../components/islas/Checkout.jsx";
+---
+<BaseLayout titulo="Confirma tu pedido — Frecuente">
+  <div class="cf-contenedor">
+    <Checkout client:only="react">
+      <h1 slot="fallback">Confirma tu pedido</h1>
+    </Checkout>
+  </div>
+</BaseLayout>

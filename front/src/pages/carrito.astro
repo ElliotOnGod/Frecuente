@@ -1,0 +1,12 @@
+---
+/** /carrito — carrito editable. */
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Cart from "../components/islas/Cart.jsx";
+---
+<BaseLayout titulo="Tu carrito — Frecuente">
+  <div class="cf-contenedor">
+    <Cart client:only="react">
+      <h1 slot="fallback">Tu carrito</h1>
+    </Cart>
+  </div>
+</BaseLayout>

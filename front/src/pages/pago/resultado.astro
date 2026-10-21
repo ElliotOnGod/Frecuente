@@ -1,0 +1,12 @@
+---
+/** /pago/resultado — regreso desde Mercado Pago o PayPal (sandbox). */
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import ResultadoPago from "../../components/islas/ResultadoPago.jsx";
+---
+<BaseLayout titulo="Revisando tu pago — Frecuente">
+  <div class="cf-contenedor">
+    <ResultadoPago client:only="react">
+      <h1 slot="fallback">Revisando tu pago…</h1>
+    </ResultadoPago>
+  </div>
+</BaseLayout>

@@ -1,0 +1,56 @@
+---
+/**
+ * AdminLayout — BaseLayout + menú lateral del panel de administración.
+ * El menú es estático (.astro); el contenido de cada sección es una isla.
+ * AvisosEnVivo abre la conexión en vivo (Subscription eventosAdmin) una
+ * sola vez por página y la comparte con las demás islas del panel.
+ */
+import BaseLayout from "./BaseLayout.astro";
+import AvisosEnVivo from "../components/islas/admin/AvisosEnVivo.jsx";
+
+interface Props {
+  titulo: string;
+}
+
+const { titulo } = Astro.props;
+const ruta = Astro.url.pathname.replace(/\/$/, "") || "/";
+
+const secciones = [
+  { href: "/admin", texto: "Resumen", icono: "📊" },
+  { href: "/admin/pedidos", texto: "Pedidos", icono: "📦" },
+  { href: "/admin/caja", texto: "Caja (canjes)", icono: "🧾" },
+  { href: "/admin/membresias", texto: "Membresías", icono: "⭐" },
+  { href: "/admin/clientes", texto: "Clientes", icono: "👥" },
+  { href: "/admin/productos", texto: "Productos", icono: "☕" },
+];
+---
+<BaseLayout titulo={`${titulo} — Panel Frecuente`}>
+  <div class="cf-contenedor cf-admin">
+    <nav class="cf-admin__menu" aria-label="Panel de administración">
+      <p class="cf-caption cf-admin__marca">Panel de administración</p>
+      <!-- client:only: depende de la sesión de admin y abre un WebSocket -->
+      <AvisosEnVivo client:only="react" />
+      <ul class="cf-sidebar__lista">
+        {secciones.map((s) => (
+          <li>
+            <a
+              class="cf-sidebar__btn"
+              href={s.href}
+              aria-current={ruta === s.href ? "page" : undefined}
+            >
+              <span aria-hidden="true">{s.icono}</span>&nbsp; {s.texto}
+            </a>
+          </li>
+        ))}
+        <li>
+          <a class="cf-sidebar__btn" href="/">
+            <span aria-hidden="true">↩</span>&nbsp; Ver la tienda
+          </a>
+        </li>
+      </ul>
+    </nav>
+    <div class="cf-admin__contenido">
+      <slot />
+    </div>
+  </div>
+</BaseLayout>

@@ -1,0 +1,80 @@
+<svg viewBox="0 0 1000 638" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, sans-serif">
+  <style>
+    .entity { fill: #ffffff; stroke: #4448a8; stroke-width: 2; }
+    .header { fill: #4448a8; }
+    .emb { fill: #f4f5ff; stroke: #4448a8; stroke-width: 1.2; stroke-dasharray: 4 3; }
+    .embh { fill: #c9ccef; }
+    .title { font-size: 14px; font-weight: bold; fill: white; }
+    .etitle { font-size: 12px; font-weight: bold; fill: #12122b; }
+    .field { font-size: 12px; fill: #222; }
+    .pk { font-weight: bold; }
+    .ref { fill: #b3261e; }
+    .rel { stroke: #e94560; stroke-width: 1.8; fill: none; }
+    .relText { font-size: 11px; fill: #666; }
+    .label { font-size: 16px; font-weight: bold; fill: #12122b; }
+    .note { font-size: 11px; fill: #666; font-style: italic; }
+  </style>
+
+  <text x="20" y="28" class="label">UML de Entidades — colecciones de MongoDB (base "frecuente")</text>
+
+  <rect x="40" y="70" width="220" height="106" class="entity"/>
+  <rect x="40" y="70" width="220" height="28" class="header"/>
+  <text x="150.0" y="89" class="title" text-anchor="middle">categorias</text>
+  <text x="52" y="117" class="field pk">_id: int (PK)</text>
+  <text x="52" y="135" class="field ">nombre: string</text>
+  <text x="52" y="153" class="field ">descripcion: string</text>
+  <text x="52" y="171" class="field ">imagen_url: string</text>
+  <rect x="380" y="70" width="250" height="160" class="entity"/>
+  <rect x="380" y="70" width="250" height="28" class="header"/>
+  <text x="505.0" y="89" class="title" text-anchor="middle">productos</text>
+  <text x="392" y="117" class="field pk">_id: int (PK)</text>
+  <text x="392" y="135" class="field ">nombre: string</text>
+  <text x="392" y="153" class="field ">descripcion: string</text>
+  <text x="392" y="171" class="field ">precio: double (≥ 0)</text>
+  <text x="392" y="189" class="field ">stock: int (≥ 0)</text>
+  <text x="392" y="207" class="field ">imagen_url: string</text>
+  <text x="392" y="225" class="field ref">categoria_id: int → categorias</text>
+  <rect x="40" y="330" width="250" height="160" class="entity"/>
+  <rect x="40" y="330" width="250" height="28" class="header"/>
+  <text x="165.0" y="349" class="title" text-anchor="middle">usuarios</text>
+  <text x="52" y="377" class="field pk">_id: int (PK)</text>
+  <text x="52" y="395" class="field ">nombre: string</text>
+  <text x="52" y="413" class="field ">email: string (único)</text>
+  <text x="52" y="431" class="field ">telefono: string</text>
+  <text x="52" y="449" class="field ">rol: cliente | admin</text>
+  <text x="52" y="467" class="field ">password_hash: string (PBKDF2)</text>
+  <text x="52" y="485" class="field ">creado: date</text>
+  <rect x="380" y="330" width="280" height="238" class="entity"/>
+  <rect x="380" y="330" width="280" height="28" class="header"/>
+  <text x="520.0" y="349" class="title" text-anchor="middle">pedidos</text>
+  <text x="392" y="377" class="field pk">_id: int (PK)</text>
+  <text x="392" y="395" class="field ref">usuario_id: int → usuarios</text>
+  <text x="392" y="413" class="field ">fecha: date</text>
+  <text x="392" y="431" class="field ">estado: registrado | pagado | …</text>
+  <text x="392" y="449" class="field ">total: double</text>
+  <text x="392" y="467" class="field ">items: [ PedidoItem ]  (embebido)</text>
+  <rect x="398" y="476" width="244" height="84" class="emb"/>
+  <rect x="398" y="476" width="244" height="22" class="embh"/>
+  <text x="520" y="491" class="etitle" text-anchor="middle">PedidoItem (subdocumento)</text>
+  <text x="410" y="514" class="field ref">producto_id: int → productos</text>
+  <text x="410" y="530" class="field ">cantidad: int (≥ 1)</text>
+  <text x="410" y="546" class="field ">precio_unit: double</text>
+  <rect x="740" y="70" width="220" height="70" class="entity"/>
+  <rect x="740" y="70" width="220" height="28" class="header"/>
+  <text x="850.0" y="89" class="title" text-anchor="middle">contadores</text>
+  <text x="752" y="117" class="field pk">_id: string (colección)</text>
+  <text x="752" y="135" class="field ">valor: int</text>
+  <text x="740" y="160" class="note">Ids consecutivos 1, 2, 3… con $inc atómico</text>
+  <text x="740" y="176" class="note">(equivale a AUTO_INCREMENT)</text>
+  <path d="M380,232 L320,232 L320,130 L260,130" class="rel"/>
+  <text x="268" y="122" class="relText">1</text><text x="362" y="226" class="relText">N</text>
+  <text x="326" y="186" class="relText">referencia</text>
+  <path d="M380,382 L290,382" class="rel"/>
+  <text x="296" y="376" class="relText">1</text><text x="364" y="376" class="relText">N</text>
+  <text x="300" y="398" class="relText">referencia</text>
+  <path d="M642,514 L700,514 L700,200 L630,200" class="rel"/>
+  <text x="636" y="194" class="relText">1</text><text x="646" y="508" class="relText">N</text>
+  <text x="706" y="320" class="relText">referencia</text>
+  <text x="40" y="598" class="note">Rojo = referencia por id a otra colección. Los PedidoItem van embebidos dentro de su pedido: siempre se leen juntos y guardan el precio con el que se vendió.</text>
+  <text x="40" y="616" class="note">Cada colección tiene validación $jsonSchema; índices en categoria_id, usuario_id, items.producto_id y email (único). password_hash nunca sale en la API.</text>
+</svg>

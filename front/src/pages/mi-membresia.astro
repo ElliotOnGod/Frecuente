@@ -1,0 +1,12 @@
+---
+/** /mi-membresia — código del día (en vivo), beneficios e historial de canjes. */
+import BaseLayout from "../layouts/BaseLayout.astro";
+import MiMembresia from "../components/islas/MiMembresia.jsx";
+---
+<BaseLayout titulo="Mi membresía — Frecuente">
+  <div class="cf-contenedor">
+    <MiMembresia client:only="react">
+      <h1 slot="fallback">Mi membresía</h1>
+    </MiMembresia>
+  </div>
+</BaseLayout>

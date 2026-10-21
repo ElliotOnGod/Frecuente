@@ -1,0 +1,11 @@
+---
+/** /admin/clientes — panel de administración: Clientes. */
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import AdminClientes from "../../components/islas/admin/AdminClientes.jsx";
+---
+<AdminLayout titulo="Clientes">
+  <!-- client:only: depende de la sesión de admin guardada en el navegador -->
+  <AdminClientes client:only="react">
+    <h1 slot="fallback">Clientes</h1>
+  </AdminClientes>
+</AdminLayout>

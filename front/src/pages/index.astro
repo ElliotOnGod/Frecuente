@@ -1,0 +1,17 @@
+---
+/** Inicio — Hero + catálogo por categoría (isla) + sección de contexto. */
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Hero from "../components/Hero.astro";
+import ContextSection from "../components/ContextSection.astro";
+import CatalogoHome from "../components/islas/CatalogoHome.jsx";
+---
+<BaseLayout>
+  <div class="cf-contenedor">
+    <Hero />
+
+    <!-- client:load: se pinta el skeleton en el HTML y se hidrata al cargar -->
+    <CatalogoHome client:load>
+      <ContextSection />
+    </CatalogoHome>
+  </div>
+</BaseLayout>

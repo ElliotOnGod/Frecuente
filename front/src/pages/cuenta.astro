@@ -1,0 +1,12 @@
+---
+/** /cuenta — Tu cuenta. */
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Cuenta from "../components/islas/Cuenta.jsx";
+---
+<BaseLayout titulo="Tu cuenta — Frecuente">
+  <div class="cf-contenedor">
+    <Cuenta client:only="react">
+      <h1 slot="fallback">Tu cuenta</h1>
+    </Cuenta>
+  </div>
+</BaseLayout>

@@ -1,0 +1,15 @@
+---
+/** /membresias — planes mensuales para canjear en el local. */
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Planes from "../components/islas/Planes.jsx";
+---
+<BaseLayout
+  titulo="Membresías — Frecuente"
+  descripcion="Un café al día, café con comida o el combo completo: planes de 30 días para canjear en el local de Frecuente."
+>
+  <div class="cf-contenedor">
+    <Planes client:only="react">
+      <h1 slot="fallback">Membresías</h1>
+    </Planes>
+  </div>
+</BaseLayout>

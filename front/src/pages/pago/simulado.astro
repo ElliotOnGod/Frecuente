@@ -1,0 +1,12 @@
+---
+/** /pago/simulado?pedido=N — pasarela de prueba (PAGOS_MODO=simulado). */
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import PasarelaSimulada from "../../components/islas/PasarelaSimulada.jsx";
+---
+<BaseLayout titulo="Pasarela de prueba — Frecuente">
+  <div class="cf-contenedor">
+    <PasarelaSimulada client:only="react">
+      <h1 slot="fallback">Pasarela de prueba</h1>
+    </PasarelaSimulada>
+  </div>
+</BaseLayout>

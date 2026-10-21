@@ -1,0 +1,11 @@
+---
+/** /admin/membresias — panel de administración: Membresías. */
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import AdminMembresias from "../../components/islas/admin/AdminMembresias.jsx";
+---
+<AdminLayout titulo="Membresías">
+  <!-- client:only: depende de la sesión de admin guardada en el navegador -->
+  <AdminMembresias client:only="react">
+    <h1 slot="fallback">Membresías</h1>
+  </AdminMembresias>
+</AdminLayout>

@@ -1,0 +1,204 @@
+{
+  "categorias": [
+    {
+      "id": 1,
+      "nombre": "Café en grano y molido",
+      "descripcion": "Grano de origen y molienda a tu gusto para preparar en casa.",
+      "imagen_url": ""
+    },
+    {
+      "id": 2,
+      "nombre": "Leches y alternativas",
+      "descripcion": "Enteras, deslactosadas y vegetales versión barista.",
+      "imagen_url": ""
+    },
+    {
+      "id": 3,
+      "nombre": "Matcha",
+      "descripcion": "Matcha ceremonial y premezclas listas para servir.",
+      "imagen_url": ""
+    },
+    {
+      "id": 4,
+      "nombre": "Accesorios",
+      "descripcion": "Lo que necesitas para preparar y llevar tu café.",
+      "imagen_url": ""
+    }
+  ],
+  "productos": [
+    {
+      "id": 1,
+      "nombre": "Blend de Casa 250 g",
+      "descripcion": "Nuestra mezcla de todos los días: chocolate, nuez y cuerpo medio.",
+      "precio": 185.0,
+      "stock": 40,
+      "imagen_url": "",
+      "categoria_id": 1
+    },
+    {
+      "id": 2,
+      "nombre": "Etiopía Yirgacheffe 250 g",
+      "descripcion": "Lavado, floral y cítrico. Ideal en V60 o Chemex.",
+      "precio": 260.0,
+      "stock": 18,
+      "imagen_url": "",
+      "categoria_id": 1
+    },
+    {
+      "id": 3,
+      "nombre": "Chiapas Altura molido 500 g",
+      "descripcion": "Molienda media para cafetera de goteo. Dulce y equilibrado.",
+      "precio": 240.0,
+      "stock": 25,
+      "imagen_url": "",
+      "categoria_id": 1
+    },
+    {
+      "id": 4,
+      "nombre": "Leche entera 1 L",
+      "descripcion": "Leche fresca pasteurizada, la base clásica del latte.",
+      "precio": 34.0,
+      "stock": 60,
+      "imagen_url": "",
+      "categoria_id": 2
+    },
+    {
+      "id": 5,
+      "nombre": "Leche de avena barista 1 L",
+      "descripcion": "Textura cremosa, espuma estable y sabor neutro.",
+      "precio": 68.0,
+      "stock": 35,
+      "imagen_url": "",
+      "categoria_id": 2
+    },
+    {
+      "id": 6,
+      "nombre": "Leche de almendra 1 L",
+      "descripcion": "Sin azúcar añadida, ligera y con nota de almendra tostada.",
+      "precio": 62.0,
+      "stock": 30,
+      "imagen_url": "",
+      "categoria_id": 2
+    },
+    {
+      "id": 7,
+      "nombre": "Matcha ceremonial 50 g",
+      "descripcion": "Primera cosecha de Uji. Color intenso y amargor suave.",
+      "precio": 320.0,
+      "stock": 12,
+      "imagen_url": "",
+      "categoria_id": 3
+    },
+    {
+      "id": 8,
+      "nombre": "Premezcla matcha latte 200 g",
+      "descripcion": "Matcha con azúcar de caña: solo agrega leche caliente o fría.",
+      "precio": 180.0,
+      "stock": 22,
+      "imagen_url": "",
+      "categoria_id": 3
+    },
+    {
+      "id": 9,
+      "nombre": "Prensa francesa 600 ml",
+      "descripcion": "Vidrio borosilicato y filtro de acero. Rinde 3 tazas.",
+      "precio": 420.0,
+      "stock": 9,
+      "imagen_url": "",
+      "categoria_id": 4
+    }
+  ],
+  "usuarios": [
+    {
+      "id": 1,
+      "nombre": "Cliente Demo",
+      "email": "demo@frecuente.mx",
+      "telefono": "3312345678",
+      "rol": "cliente",
+      "password": "cafe1234"
+    },
+    {
+      "id": 2,
+      "nombre": "Administrador Frecuente",
+      "email": "admin@frecuente.mx",
+      "telefono": "",
+      "rol": "admin",
+      "password": "admin1234"
+    },
+    {
+      "id": 3,
+      "nombre": "Mariana López",
+      "email": "mariana@frecuente.mx",
+      "telefono": "3311122233",
+      "rol": "cliente",
+      "password": "cafe1234"
+    },
+    {
+      "id": 4,
+      "nombre": "Carlos Ramírez",
+      "email": "carlos@frecuente.mx",
+      "telefono": "3322233344",
+      "rol": "cliente",
+      "password": "cafe1234"
+    },
+    {
+      "id": 5,
+      "nombre": "Oficina Andares",
+      "email": "compras@andares.mx",
+      "telefono": "3333344455",
+      "rol": "cliente",
+      "password": "cafe1234"
+    }
+  ],
+  "planes": [
+    {
+      "id": 1,
+      "nombre": "Café Diario",
+      "descripcion": "Tu café de cada día en el local, sin pensar en la cuenta.",
+      "precio": 549.0,
+      "incluye": [
+        "1 bebida de café al día, tamaño regular",
+        "Americano, latte, capuchino o espresso",
+        "Leche vegetal sin costo extra"
+      ],
+      "opciones": [
+        "Americano",
+        "Latte",
+        "Capuchino",
+        "Espresso doble"
+      ]
+    },
+    {
+      "id": 2,
+      "nombre": "Café + Comida",
+      "descripcion": "Desayuno o comida resuelta: tu café y un alimento todos los días.",
+      "precio": 1199.0,
+      "incluye": [
+        "1 bebida de café al día, tamaño regular",
+        "1 alimento al día: sándwich, bagel o croissant",
+        "Leche vegetal sin costo extra"
+      ],
+      "opciones": [
+        "Café + sándwich",
+        "Café + bagel",
+        "Café + croissant"
+      ]
+    },
+    {
+      "id": 3,
+      "nombre": "Combo Frecuente",
+      "descripcion": "El combo completo: bebida de especialidad, alimento y postre.",
+      "precio": 1499.0,
+      "incluye": [
+        "1 bebida de especialidad al día, tamaño grande (incluye matcha y métodos de filtrado)",
+        "1 alimento al día",
+        "1 postre o pan dulce al día"
+      ],
+      "opciones": [
+        "Combo con sándwich",
+        "Combo con bagel",
+        "Combo con croissant"
+      ]
+    }
+  ]
+}

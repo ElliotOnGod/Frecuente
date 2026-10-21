@@ -1,0 +1,47 @@
+---
+/**
+ * Frecuente — e-commerce (avance)
+ * Equipo: Jehu Uribe Bermudez (23100139),
+ *         Jose Fernando Leon Lopez (23100146),
+ *         Elliot Garcia Lopez (22300923)
+ * Programacion Web II — CETI Colomos
+ *
+ * BaseLayout — reemplaza a App.jsx: TopBar + contenido de la página + Footer,
+ * más el modal de detalle disponible en todas las páginas.
+ */
+import "../styles/theme.css";   // Manual de Identidad Café Frecuente
+import "../styles/global.css";  // estilos propios de la tienda
+import TopBar from "../components/TopBar.astro";
+import Footer from "../components/Footer.astro";
+import ProductDetailModal from "../components/islas/ProductDetailModal.jsx";
+
+interface Props {
+  titulo?: string;
+  descripcion?: string;
+}
+
+const {
+  titulo = "Frecuente — Tu café de cada día",
+  descripcion = "Café en grano y molido, leches, matcha y accesorios de la cafetería Frecuente, con envío en Guadalajara.",
+} = Astro.props;
+---
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={descripcion} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{titulo}</title>
+  </head>
+  <body>
+    <TopBar />
+    <div class="cf-main">
+      <slot />
+    </div>
+    <Footer />
+
+    <!-- Modal con portal: solo existe en el navegador -->
+    <ProductDetailModal client:only="react" />
+  </body>
+</html>
