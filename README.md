@@ -206,7 +206,7 @@ frecuente/
 │       │   ├── cuenta.astro            /cuenta (datos y mis pedidos)
 │       │   └── 404.astro
 │       ├── components/                 Componentes estáticos (.astro):
-│       │   │                           TopBar, Hero, ContextSection, Footer
+│       │   │                           TopBar, Hero, ContextSection, Ubicacion, Footer
 │       │   └── islas/                  Componentes interactivos (React):
 │       │                               CatalogoHome, Sidebar, CategoryGrid,
 │       │                               CategoryDetail, ProductCard,
@@ -214,7 +214,7 @@ frecuente/
 │       │                               OrderSuccess, CartButton, Skeleton,
 │       │                               LoginForm, RegistroForm, SessionMenu,
 │       │                               Cuenta, Insignia, PasarelaSimulada,
-│       │                               ResultadoPago, Planes, MiMembresia
+│       │                               ResultadoPago, Planes, MiMembresia, MapaLocal
 │       │                               admin/: SoloAdmin, AdminResumen,
 │       │                               AdminPedidos, AdminProductos, Graficas,
 │       │                               AvisosEnVivo, AdminCaja, AdminMembresias,
@@ -225,6 +225,7 @@ frecuente/
 │       ├── lib/formato.js              Iconos, formato de pesos, rutas y estados
 │       ├── lib/pagos.js                Consultas y acciones de cobro compartidas
 │       ├── lib/membresias.js           Consultas y acciones de membresía
+│       ├── lib/local.js                Dirección, coordenadas y enlaces del local
 │       ├── lib/subscripciones.js       Cliente WebSocket propio (graphql-transport-ws)
 │       ├── hooks/useGraphQLQuery.js    Hook propio de fetching (con `recarga`)
 │       ├── hooks/useSuscripcion.js     Hook propio para Subscriptions
@@ -249,6 +250,7 @@ pie, encabezado) es `.astro` y llega como HTML puro.
 | `AdminResumen`, `AdminPedidos`, `AdminProductos`, `AdminCaja`, `AdminMembresias`, `AdminClientes` | `client:only="react"` | Dependen de la sesión de admin |
 | `AvisosEnVivo` (en `AdminLayout`) | `client:only="react"` | Abre la única conexión en vivo del panel y la comparte por Zustand |
 | `ProductDetailModal` | `client:only="react"` | Usa `createPortal` sobre `document.body` |
+| `MapaLocal` | `client:visible` | El mapa (MapLibre) solo se descarga cuando llegas a la sección "Visítanos" |
 
 Todas las islas de una página comparten el mismo store de Zustand, por eso
 una `ProductCard` puede abrir el modal aunque vivan en islas distintas.
@@ -295,7 +297,14 @@ Seguridad aplicada:
 - Las cuentas nuevas siempre son `cliente`; crear, editar o borrar productos
   requiere rol `admin`.
 - `?siguiente=` solo acepta rutas internas, así el login no se puede usar
-  para redirigir a otro sitio.
+  para redirigir a otro sitio (también rechaza trucos como `/\otro.com`,
+  que el navegador interpreta como `//otro.com`).
+- El login tarda lo mismo si el correo no existe (se verifica contra un hash
+  falso), así el tiempo de respuesta tampoco revela qué correos tienen cuenta.
+- Si falta `JWT_SECRET` en `back/.env` (o se dejó el valor de ejemplo), el
+  backend genera una clave aleatoria al arrancar y lo avisa en la consola.
+  Así nadie puede firmar tokens de admin con una clave conocida; para que las
+  sesiones no se cierren al reiniciar, pon tu propia clave en `.env`.
 
 Pantallas: el checkout pide iniciar sesión (o crear cuenta) y después regresa
 solo al checkout con el carrito intacto. En la barra aparece "Iniciar sesión"
@@ -565,6 +574,30 @@ Decisiones de modelado:
 - **Validación `$jsonSchema`** en cada colección (campos obligatorios, tipos,
   precio y stock ≥ 0, estados permitidos) e **índices** en `categoria_id`,
   `usuario_id`, `items.producto_id` y `email` (único).
+
+## Ubicación del local (mapa)
+
+Al final del inicio está la sección **Visítanos** (`/#ubicacion`) con la
+dirección de **Frecuente Café Bar GDL** (C. Justo Sierra 2665, Arcos
+Vallarta, 44650 Guadalajara, Jal.) y un mapa interactivo. El pie de página
+también enlaza a esa sección.
+
+| Pieza | Qué hace |
+|---|---|
+| `components/Ubicacion.astro` | Tarjeta estática (HTML sin JS): dirección, "Cómo llegar" (Google Maps), "Abrir en Waze" y "Copiar dirección" |
+| `components/islas/MapaLocal.jsx` | Isla con `client:visible`: el JS del mapa solo se descarga cuando la sección entra en pantalla |
+| `lib/local.js` | Nombre, dirección, coordenadas y enlaces del local en un solo lugar |
+
+API de mapas **gratuita y sin API key**: [MapLibre GL JS](https://maplibre.org)
+(librería de código abierto) con los mapas vectoriales de
+[OpenFreeMap](https://openfreemap.org) (datos de OpenStreetMap, sin registro
+ni límite de visitas). Como el mapa es vectorial, se pinta con la paleta del
+manual (Crema, Espresso, Tostado, Hoja), con edificios en 3D al acercarse, y
+cambia solo entre modo claro y oscuro. La rueda del mouse no "atrapa" la
+página: el zoom es con Ctrl + rueda (dos dedos en el celular).
+
+> Las coordenadas salen de los números de casa de OpenStreetMap; los botones
+> de "Cómo llegar" buscan el lugar por nombre y dirección.
 
 ## Temas del curso aplicados (10 de 15)
 

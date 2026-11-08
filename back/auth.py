@@ -26,7 +26,21 @@ from pathlib import Path
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
-JWT_SECRET = os.getenv("JWT_SECRET", "cambia-esta-clave-en-produccion")
+# La clave firma las sesiones (JWT) y los códigos de canje del día. Si
+# fuera pública, cualquiera podría fabricarse un token de admin. Por eso:
+#   - sin JWT_SECRET en .env (o con el valor de ejemplo) se genera una
+#     clave aleatoria al arrancar. Funciona igual, pero las sesiones se
+#     cierran cada vez que reinicias el backend.
+#   - para que las sesiones sobrevivan reinicios, pon tu propia clave en .env.
+_CLAVES_DE_EJEMPLO = {"", "cambia-esta-clave-en-produccion"}
+JWT_SECRET = os.getenv("JWT_SECRET", "").strip()
+if JWT_SECRET in _CLAVES_DE_EJEMPLO:
+    JWT_SECRET = secrets.token_urlsafe(48)
+    print(
+        "[frecuente] AVISO: falta JWT_SECRET en back/.env; se generó una clave temporal.\n"
+        "            Las sesiones se cerrarán al reiniciar el backend. Para fijarla, pon en .env:\n"
+        f"            JWT_SECRET={secrets.token_urlsafe(32)}"
+    )
 JWT_ALG = "HS256"
 JWT_DIAS = 7
 ITERACIONES = 260_000
@@ -55,6 +69,16 @@ def verificar_password(password: str, guardado: str) -> bool:
         return hmac.compare_digest(dk, base64.b64decode(hash_b64))
     except (ValueError, TypeError):
         return False
+
+
+# Hash de una contraseña al azar que nadie conoce. Se usa cuando el correo
+# no existe, para que el login tarde lo mismo que con un correo real y el
+# tiempo de respuesta no delate qué correos tienen cuenta.
+_HASH_FALSO = hashear_password(secrets.token_urlsafe(16))
+
+
+def gastar_tiempo_de_verificacion(password: str) -> None:
+    verificar_password(password, _HASH_FALSO)
 
 
 # ---------------- tokens ----------------

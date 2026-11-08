@@ -1,9 +1,13 @@
 ---
-/** Footer — pie fijo del sitio, con los créditos del equipo. */
+/** Footer — pie fijo del sitio, con los créditos del equipo y la dirección del local. */
+import { LOCAL } from "../lib/local";
 ---
 <footer class="cf-footer">
   <div class="cf-contenedor">
     <p style="margin: 0">Frecuente · Guadalajara, Jalisco · Tu café de cada día</p>
+    <p style="margin: var(--espacio-xs) 0 0">
+      <a href="/#ubicacion">{LOCAL.calle}, {LOCAL.colonia}</a>
+    </p>
     <p class="cf-caption" style="margin: var(--espacio-xs) 0 0">
       Proyecto escolar — Jehu Uribe Bermúdez, José Fernando León López y
       Elliot García López · Programación Web II, CETI Colomos

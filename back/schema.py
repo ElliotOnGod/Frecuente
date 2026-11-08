@@ -48,6 +48,7 @@ from auth import (
     JWT_SECRET,
     SesionInvalida,
     crear_token,
+    gastar_tiempo_de_verificacion,
     hashear_password,
     token_de_request,
     usuario_id_de_token,
@@ -1483,9 +1484,12 @@ class Mutation:
     @strawberry.mutation
     def iniciar_sesion(self, email: str, password: str) -> AuthPayload:
         usuario = db.usuarios.find_one({"email": email.strip().lower()})
-        # Mismo mensaje si no existe el correo o si la contraseña está mal,
-        # para no revelar qué correos tienen cuenta.
-        if usuario is None or not verificar_password(password, usuario["password_hash"]):
+        # Mismo mensaje Y mismo tiempo si no existe el correo o si la
+        # contraseña está mal, para no revelar qué correos tienen cuenta.
+        if usuario is None:
+            gastar_tiempo_de_verificacion(password)
+            raise ValueError("Correo o contraseña incorrectos")
+        if not verificar_password(password, usuario["password_hash"]):
             raise ValueError("Correo o contraseña incorrectos")
         return AuthPayload(token=crear_token(usuario["_id"]), usuario=_usuario(usuario))
 

@@ -40,9 +40,19 @@ export const RUTAS = {
  * A dónde mandar al usuario después de iniciar sesión. Solo se aceptan
  * rutas internas ("/algo"), nunca "//otro-sitio.com" ni URLs completas,
  * para que nadie pueda usar el login para redirigir a una página falsa.
+ *
+ * Ojo: el navegador trata "\" como "/" en las URLs, así que "/\otro.com"
+ * también abre otro sitio. Por eso se revisa que el segundo carácter no sea
+ * ni "/" ni "\", y que no haya caracteres de control (tab, salto de línea),
+ * que el navegador borra antes de interpretar la ruta.
  */
 export function destinoSeguro(valor, porDefecto = "/cuenta") {
-  if (typeof valor === "string" && valor.startsWith("/") && !valor.startsWith("//")) {
+  if (
+    typeof valor === "string" &&
+    valor.startsWith("/") &&
+    !/^\/[/\\]/.test(valor) &&
+    !/[\u0000-\u001f\u007f]/.test(valor)
+  ) {
     return valor;
   }
   return porDefecto;

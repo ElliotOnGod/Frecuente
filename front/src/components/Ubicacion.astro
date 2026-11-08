@@ -1,0 +1,78 @@
+---
+/**
+ * Ubicacion — sección "Visítanos" del inicio: tarjeta con la dirección del
+ * local + mapa interactivo.
+ *
+ * La tarjeta es HTML estático (llega sin JavaScript). El mapa es una isla
+ * con client:visible: Astro no descarga Leaflet hasta que la sección entra
+ * en pantalla, así no hace más lenta la carga del catálogo.
+ */
+import MapaLocal from "./islas/MapaLocal.jsx";
+import { LOCAL, DIRECCION_COMPLETA, ENLACES_LOCAL } from "../lib/local";
+---
+<section id="ubicacion" class="cf-ubicacion" aria-labelledby="titulo-ubicacion">
+  <div class="cf-ubicacion__tarjeta">
+    <p class="cf-ubicacion__antetitulo">Visítanos</p>
+    <h2 id="titulo-ubicacion" class="cf-ubicacion__titulo">{LOCAL.nombre}</h2>
+    <p class="cf-ubicacion__texto">
+      Ven por tu café, recoge tus pedidos con pago en efectivo o canjea el
+      beneficio de tu membresía en la barra.
+    </p>
+
+    <address class="cf-ubicacion__direccion">
+      <svg class="cf-icon cf-icon--md" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/>
+        <circle cx="12" cy="10" r="3"/>
+      </svg>
+      <span>
+        {LOCAL.calle}<br />
+        {LOCAL.colonia} · {LOCAL.ciudad}
+      </span>
+    </address>
+
+    <div class="cf-ubicacion__acciones">
+      <a class="cf-btn cf-btn--crema" href={ENLACES_LOCAL.googleMaps} target="_blank" rel="noopener">
+        <svg class="cf-icon cf-icon--md" viewBox="0 0 24 24" aria-hidden="true">
+          <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+        </svg>
+        Cómo llegar
+      </a>
+      <a class="cf-btn cf-btn--contorno" href={ENLACES_LOCAL.waze} target="_blank" rel="noopener">
+        Abrir en Waze
+      </a>
+      <button
+        type="button"
+        class="cf-btn cf-btn--contorno"
+        data-copiar={DIRECCION_COMPLETA}
+        aria-live="polite"
+      >
+        <svg class="cf-icon cf-icon--md" viewBox="0 0 24 24" aria-hidden="true">
+          <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+        </svg>
+        <span>Copiar dirección</span>
+      </button>
+    </div>
+  </div>
+
+  <MapaLocal client:visible />
+</section>
+
+<script>
+  // "Copiar dirección": usa el portapapeles del navegador y confirma en el botón
+  document.querySelectorAll<HTMLButtonElement>("[data-copiar]").forEach((boton) => {
+    const etiqueta = boton.querySelector("span");
+    const original = etiqueta?.textContent ?? "";
+    boton.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(boton.dataset.copiar ?? "");
+        if (etiqueta) etiqueta.textContent = "¡Copiada!";
+      } catch {
+        if (etiqueta) etiqueta.textContent = "No se pudo copiar";
+      }
+      setTimeout(() => {
+        if (etiqueta) etiqueta.textContent = original;
+      }, 2000);
+    });
+  });
+</script>

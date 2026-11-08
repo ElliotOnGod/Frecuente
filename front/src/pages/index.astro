@@ -1,8 +1,9 @@
 ---
-/** Inicio — Hero + catálogo por categoría (isla) + sección de contexto. */
+/** Inicio — Hero + catálogo por categoría (isla) + contexto + ubicación del local. */
 import BaseLayout from "../layouts/BaseLayout.astro";
 import Hero from "../components/Hero.astro";
 import ContextSection from "../components/ContextSection.astro";
+import Ubicacion from "../components/Ubicacion.astro";
 import CatalogoHome from "../components/islas/CatalogoHome.jsx";
 ---
 <BaseLayout>
@@ -13,5 +14,8 @@ import CatalogoHome from "../components/islas/CatalogoHome.jsx";
     <CatalogoHome client:load>
       <ContextSection />
     </CatalogoHome>
+
+    <!-- Tarjeta estática + mapa (isla con client:visible) -->
+    <Ubicacion />
   </div>
 </BaseLayout>
