@@ -6,7 +6,7 @@ import { SkeletonGrid } from "./Skeleton";
 const QUERY_CATEGORIAS = `
   query Categorias {
     categorias {
-      id nombre descripcion
+      id nombre descripcion imagenUrl
       productos { id }
     }
   }

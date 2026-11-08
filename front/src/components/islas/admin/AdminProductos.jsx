@@ -1,17 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { graphqlRequest } from "../../../lib/graphql";
-import { iconoDe, pesos } from "../../../lib/formato";
+import { pesos } from "../../../lib/formato";
+import { MAX_IMAGENES, subirImagen } from "../../../lib/imagenes";
 import { Skeleton } from "../Skeleton";
+import Foto from "../Foto";
 import SoloAdmin from "./SoloAdmin";
 
 const QUERY = `
   query Inventario {
     categorias { id nombre }
-    productos { id nombre descripcion precio stock imagenUrl categoriaId }
+    productos { id nombre descripcion precio stock imagenUrl imagenes categoriaId }
   }
 `;
 
-const CAMPOS = "id nombre descripcion precio stock imagenUrl categoriaId";
+const CAMPOS = "id nombre descripcion precio stock imagenUrl imagenes categoriaId";
 
 const MUTATION_CREAR = `
   mutation Crear($input: ProductoInput!) { crearProducto(input: $input) { ${CAMPOS} } }
@@ -38,6 +40,121 @@ function validar(f) {
   return e;
 }
 
+/**
+ * GestorImagenes — fotos del producto dentro del formulario.
+ * Se suben al momento (comprimidas en el navegador) y quedan en la lista;
+ * el producto se actualiza hasta que das "Guardar". La primera es la
+ * principal: es la que sale en el catálogo.
+ */
+function GestorImagenes({ imagenes, onCambiar, categoriaId, onSubiendo }) {
+  const entrada = useRef(null);
+  const [subiendo, setSubiendo] = useState(null); // { hecho, total } o null
+  const [error, setError] = useState(null);
+  const [encima, setEncima] = useState(false);
+  const lugares = MAX_IMAGENES - imagenes.length;
+
+  const subir = async (archivos) => {
+    const lista = [...archivos].slice(0, lugares);
+    if (!lista.length) return;
+    setError(
+      archivos.length > lugares ? `Solo caben ${MAX_IMAGENES} fotos; se subirán las primeras ${lugares}.` : null
+    );
+    setSubiendo({ hecho: 0, total: lista.length });
+    onSubiendo(true);
+    let actuales = imagenes;
+    for (const [n, archivo] of lista.entries()) {
+      try {
+        const url = await subirImagen(archivo);
+        actuales = [...actuales, url];
+        onCambiar(actuales);
+      } catch (e) {
+        setError(e.message);
+      }
+      setSubiendo({ hecho: n + 1, total: lista.length });
+    }
+    setSubiendo(null);
+    onSubiendo(false);
+    if (entrada.current) entrada.current.value = "";
+  };
+
+  const quitar = (url) => onCambiar(imagenes.filter((u) => u !== url));
+  const hacerPrincipal = (url) => onCambiar([url, ...imagenes.filter((u) => u !== url)]);
+
+  const soltar = (e) => {
+    e.preventDefault();
+    setEncima(false);
+    if (!subiendo && lugares > 0) subir(e.dataTransfer.files);
+  };
+
+  return (
+    <fieldset className="cf-campo cf-fotos">
+      <legend className="cf-label">Fotos ({imagenes.length} de {MAX_IMAGENES})</legend>
+
+      {imagenes.length > 0 && (
+        <ul className="cf-fotos__lista">
+          {imagenes.map((url, n) => (
+            <li key={url} className="cf-fotos__item">
+              <Foto src={url} alt={`Foto ${n + 1}`} categoriaId={categoriaId} ancho={200} className="cf-figura--alta" />
+              {n === 0 ? (
+                <span className="cf-fotos__principal">Principal</span>
+              ) : (
+                <button type="button" className="cf-fotos__accion" onClick={() => hacerPrincipal(url)}>
+                  Hacer principal
+                </button>
+              )}
+              <button
+                type="button"
+                className="cf-fotos__quitar"
+                aria-label={`Quitar foto ${n + 1}`}
+                onClick={() => quitar(url)}
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {lugares > 0 && (
+        <label
+          className={`cf-fotos__zona${encima ? " cf-fotos__zona--encima" : ""}`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setEncima(true);
+          }}
+          onDragLeave={() => setEncima(false)}
+          onDrop={soltar}
+        >
+          <input
+            ref={entrada}
+            className="cf-sr"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            disabled={Boolean(subiendo)}
+            onChange={(e) => subir(e.target.files)}
+          />
+          <svg className="cf-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" x2="12" y1="3" y2="15" />
+          </svg>
+          {subiendo ? (
+            <span role="status">Subiendo {Math.min(subiendo.hecho + 1, subiendo.total)} de {subiendo.total}…</span>
+          ) : (
+            <span>
+              <strong>Elige fotos</strong> o arrástralas aquí
+              <span className="cf-caption cf-bloque">JPG, PNG o WebP · se comprimen solas antes de subir</span>
+            </span>
+          )}
+        </label>
+      )}
+
+      {error && <span className="cf-ayuda cf-ayuda--error" role="alert">{error}</span>}
+    </fieldset>
+  );
+}
+
 /** Formulario para crear o editar (en un modal). */
 function FormularioProducto({ producto, categorias, onCerrar, onGuardado }) {
   const editando = Boolean(producto);
@@ -52,6 +169,10 @@ function FormularioProducto({ producto, categorias, onCerrar, onGuardado }) {
         }
       : { ...VACIO, categoriaId: String(categorias[0]?.id ?? "") }
   );
+  const [imagenes, setImagenes] = useState(
+    editando ? producto.imagenes ?? [producto.imagenUrl].filter(Boolean) : []
+  );
+  const [subiendoFotos, setSubiendoFotos] = useState(false);
   const [errores, setErrores] = useState({});
   const [error, setError] = useState(null);
   const [enviando, setEnviando] = useState(false);
@@ -78,6 +199,7 @@ function FormularioProducto({ producto, categorias, onCerrar, onGuardado }) {
       precio: Number(f.precio),
       stock: Number(f.stock),
       categoriaId: Number(f.categoriaId),
+      imagenes,
     };
     try {
       const data = editando
@@ -162,12 +284,18 @@ function FormularioProducto({ producto, categorias, onCerrar, onGuardado }) {
               ))}
             </select>
           </div>
+          <GestorImagenes
+            imagenes={imagenes}
+            onCambiar={setImagenes}
+            categoriaId={Number(f.categoriaId)}
+            onSubiendo={setSubiendoFotos}
+          />
         </div>
 
         <div className="cf-acciones" style={{ justifyContent: "flex-end" }}>
           <button type="button" className="cf-btn cf-btn--secundario" onClick={onCerrar}>Cancelar</button>
-          <button type="submit" className="cf-btn" disabled={enviando}>
-            {enviando ? "Guardando…" : editando ? "Guardar cambios" : "Crear producto"}
+          <button type="submit" className="cf-btn" disabled={enviando || subiendoFotos}>
+            {enviando ? "Guardando…" : subiendoFotos ? "Subiendo fotos…" : editando ? "Guardar cambios" : "Crear producto"}
           </button>
         </div>
       </form>
@@ -300,7 +428,7 @@ function Contenido() {
                 <tr key={p.id}>
                   <td>
                     <span className="cf-prod-celda">
-                      <span className="cf-prod-celda__icono" aria-hidden="true">{iconoDe(p.categoriaId)}</span>
+                      <Foto src={p.imagenUrl} categoriaId={p.categoriaId} ancho={96} className="cf-miniatura" />
                       <span>
                         {p.nombre}
                         <span className="cf-caption cf-bloque">#{p.id}</span>

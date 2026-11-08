@@ -214,7 +214,7 @@ frecuente/
 │       │                               OrderSuccess, CartButton, Skeleton,
 │       │                               LoginForm, RegistroForm, SessionMenu,
 │       │                               Cuenta, Insignia, PasarelaSimulada,
-│       │                               ResultadoPago, Planes, MiMembresia, MapaLocal
+│       │                               ResultadoPago, Planes, MiMembresia, MapaLocal, Foto
 │       │                               admin/: SoloAdmin, AdminResumen,
 │       │                               AdminPedidos, AdminProductos, Graficas,
 │       │                               AvisosEnVivo, AdminCaja, AdminMembresias,
@@ -226,6 +226,7 @@ frecuente/
 │       ├── lib/pagos.js                Consultas y acciones de cobro compartidas
 │       ├── lib/membresias.js           Consultas y acciones de membresía
 │       ├── lib/local.js                Dirección, coordenadas y enlaces del local
+│       ├── lib/imagenes.js             URLs de fotos y compresión antes de subir
 │       ├── lib/subscripciones.js       Cliente WebSocket propio (graphql-transport-ws)
 │       ├── hooks/useGraphQLQuery.js    Hook propio de fetching (con `recarga`)
 │       ├── hooks/useSuscripcion.js     Hook propio para Subscriptions
@@ -250,6 +251,7 @@ pie, encabezado) es `.astro` y llega como HTML puro.
 | `AdminResumen`, `AdminPedidos`, `AdminProductos`, `AdminCaja`, `AdminMembresias`, `AdminClientes` | `client:only="react"` | Dependen de la sesión de admin |
 | `AvisosEnVivo` (en `AdminLayout`) | `client:only="react"` | Abre la única conexión en vivo del panel y la comparte por Zustand |
 | `ProductDetailModal` | `client:only="react"` | Usa `createPortal` sobre `document.body` |
+| `Foto` | (dentro de otras islas) | Foto con carga diferida y el icono de la categoría si no hay imagen |
 | `MapaLocal` | `client:visible` | El mapa (MapLibre) solo se descarga cuando llegas a la sección "Visítanos" |
 
 Todas las islas de una página comparten el mismo store de Zustand, por eso
@@ -512,7 +514,7 @@ Un solo endpoint: `POST /graphql` (y `WS /graphql` para las Subscriptions).
 | Query | `resumenAdmin(dias)`, `pedidosAdmin(estado, metodo, buscar, limite, salto)` | Solo admin |
 | Mutation | `registrarUsuario`, `iniciarSesion` | Público |
 | Mutation | `registrarPedido`, `iniciarPago`, `confirmarPago`, `cancelarMiPedido` | Con sesión |
-| Mutation | `crearProducto`, `actualizarProducto`, `eliminarProducto`, `cambiarEstadoPedido`, `marcarReembolsado` | Solo admin |
+| Mutation | `crearProducto`, `actualizarProducto`, `eliminarProducto`, `subirImagen`, `cambiarEstadoPedido`, `marcarReembolsado` | Solo admin |
 | Query | `planes` | Público (`incluirInactivos` solo admin) |
 | Query | `miMembresia`, `misMembresias`, `membresia(id)` | Con sesión |
 | Query | `resumenMembresias`, `membresiasAdmin(...)`, `membresiaPorCodigo(codigo)`, `canjesHoy`, `clientesAdmin(...)` | Solo admin |
@@ -521,7 +523,7 @@ Un solo endpoint: `POST /graphql` (y `WS /graphql` para las Subscriptions).
 | Subscription | `eventosAdmin` | Solo admin |
 | Subscription | `seguirPedido(id)`, `seguirMembresia(id)` | Dueño o admin |
 
-Además, `POST /webhooks/mercadopago` recibe los avisos de Mercado Pago (opcional).
+Además, `GET /imagenes/<id>` sirve las fotos subidas y `POST /webhooks/mercadopago` recibe los avisos de Mercado Pago (opcional).
 
 Para probar las operaciones con sesión en GraphiQL, primero corre
 `iniciarSesion`, copia el `token` y agrégalo en la pestaña *Headers*:
@@ -551,7 +553,8 @@ producto que ya aparece en pedidos.
 | Colección | Documento |
 |---|---|
 | `categorias` | `{ _id, nombre, descripcion, imagen_url }` |
-| `productos` | `{ _id, nombre, descripcion, precio, stock, imagen_url, categoria_id }` |
+| `productos` | `{ _id, nombre, descripcion, precio, stock, imagen_url, imagenes: [..], categoria_id }` |
+| `imagenes` | `{ _id: "<hex>", tipo, datos (binario), bytes, creada, admin_id }` — fotos subidas desde el panel |
 | `usuarios` | `{ _id, nombre, email, telefono, rol, password_hash, creado }` |
 | `pedidos` | `{ _id, usuario_id, fecha, estado, total, items: [ { producto_id, cantidad, precio_unit } ], pago: { metodo, estado, modo, referencia, proveedor_id, pago_id, detalle, intentos, fecha_pago, actualizado } }` |
 | `planes` | `{ _id, nombre, descripcion, precio, incluye: [..], opciones: [..], activo, orden }` |
@@ -574,6 +577,31 @@ Decisiones de modelado:
 - **Validación `$jsonSchema`** en cada colección (campos obligatorios, tipos,
   precio y stock ≥ 0, estados permitidos) e **índices** en `categoria_id`,
   `usuario_id`, `items.producto_id` y `email` (único).
+
+## Fotos de productos
+
+Cada producto tiene una **galería de hasta 6 fotos** (`imagenes`); la primera
+es la principal y también queda en `imagen_url`. Las categorías tienen una.
+
+- **Catálogo:** tarjetas con foto (carga diferida y fundido suave), galería
+  con miniaturas en el detalle y miniatura en el carrito. Si un producto no
+  tiene foto o falla la URL, se ve el icono de su categoría como antes.
+- **Panel → Productos → Nuevo / Editar:** sección *Fotos* para **elegir o
+  arrastrar** imágenes (JPG, PNG o WebP), elegir la principal y quitar fotos.
+  Antes de subirlas, el navegador las reduce a 1400 px y las pasa a WebP
+  (una foto de celular de 5 MB queda en ~150–300 KB).
+- **Backend:** `subirImagen(datos)` (solo admin) guarda la foto en la
+  colección `imagenes` de MongoDB y regresa `/imagenes/<id>`, que sirve
+  `GET /imagenes/<id>` con caché de un año. Se revisa el tipo real por los
+  primeros bytes del archivo (JPG/PNG/WebP, máx. 3 MB; SVG no, porque puede
+  traer JavaScript) y `crear/actualizarProducto` solo aceptan fotos subidas
+  aquí o URLs `https://`.
+- **Fotos de ejemplo:** de [Unsplash](https://unsplash.com) (licencia
+  gratuita), en `datos_ejemplo.json`. Si tu base es de una entrega anterior,
+  al arrancar el backend se las pone solo a los productos que no tenían foto.
+
+> En Netlify las fotos de Unsplash se ven siempre; las que subas desde el
+> panel necesitan que el backend esté publicado (las sirve él).
 
 ## Ubicación del local (mapa)
 
@@ -612,6 +640,5 @@ de sesión con JWT y formularios controlados con validación.
 ## Pendiente para la siguiente entrega
 
 Rediseño visual más profesional, renovación automática de membresías
-(cobro recurrente), dirección de envío en el checkout y fotos reales del
-catálogo — por ahora cada producto muestra
-un placeholder con el icono de su categoría.
+(cobro recurrente), dirección de envío en el checkout y fotos propias del
+local (por ahora son fotos libres de Unsplash).

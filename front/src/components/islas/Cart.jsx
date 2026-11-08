@@ -1,6 +1,7 @@
 import { useStore } from "../../store/useStore";
 import { pesos, RUTAS } from "../../lib/formato";
 import { usePedidoPendiente } from "../../hooks/usePedidoPendiente";
+import Foto from "./Foto";
 
 /** Cart — lista editable del carrito, subtotal y paso a checkout. */
 export default function Cart() {
@@ -48,7 +49,12 @@ export default function Cart() {
         <tbody>
           {carrito.map((item) => (
             <tr key={item.id}>
-              <td>{item.nombre}</td>
+              <td>
+                <span className="cf-prod-celda">
+                  <Foto src={item.imagenUrl} categoriaId={item.categoriaId} ancho={96} className="cf-miniatura" />
+                  {item.nombre}
+                </span>
+              </td>
               <td>
                 <input
                   className="cf-input"

@@ -1,4 +1,5 @@
-import { iconoDe, RUTAS } from "../../lib/formato";
+import { RUTAS } from "../../lib/formato";
+import Foto from "./Foto";
 
 /** CategoryGrid — rejilla de tarjetas de categoría. Cada una lleva a su página. */
 export default function CategoryGrid({ categorias = [] }) {
@@ -6,7 +7,7 @@ export default function CategoryGrid({ categorias = [] }) {
     <div className="cf-categorias">
       {categorias.map((c) => (
         <a key={c.id} className="cf-card cf-card--accion" href={RUTAS.categoria(c.id)}>
-          <div className="cf-figura" aria-hidden="true">{iconoDe(c.id)}</div>
+          <Foto src={c.imagenUrl} alt="" categoriaId={c.id} ancho={420} prioridad />
           <div className="cf-card__cuerpo">
             <h3 className="cf-card__titulo">{c.nombre}</h3>
             <p className="cf-caption">{c.descripcion}</p>

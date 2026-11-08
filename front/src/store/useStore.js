@@ -73,7 +73,7 @@ export const useStore = create(
         ),
 
       // ---- carrito ----
-      carrito: [], // [{ id, nombre, precio, cantidad, stock, categoriaId }]
+      carrito: [], // [{ id, nombre, precio, cantidad, stock, categoriaId, imagenUrl }]
 
       agregarAlCarrito: (producto, cantidad = 1) =>
         set((state) => {
@@ -96,6 +96,7 @@ export const useStore = create(
                 precio: producto.precio,
                 stock: producto.stock,
                 categoriaId: producto.categoriaId,
+                imagenUrl: producto.imagenUrl || "",
                 cantidad,
               },
             ],

@@ -4,7 +4,9 @@ database.py — conexión a MongoDB e inicialización automática.
 Modelo de documentos (equivale al DER del Reporte P6):
 
     categorias  { _id, nombre, descripcion, imagen_url }
-    productos   { _id, nombre, descripcion, precio, stock, imagen_url, categoria_id }
+    productos   { _id, nombre, descripcion, precio, stock, imagen_url, imagenes: [..],
+                  categoria_id }
+    imagenes    { _id: "<hex>", tipo, datos (binario), bytes, creada, admin_id }
     usuarios    { _id, nombre, email, telefono, rol, password_hash, creado }
     pedidos     { _id, usuario_id, fecha, estado, total,
                   items: [ { producto_id, cantidad, precio_unit } ],
@@ -63,7 +65,10 @@ DB_NAME = os.getenv("MONGO_DB", "frecuente")
 client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000, tz_aware=False)
 db = client[DB_NAME]
 
-COLECCIONES = ["categorias", "productos", "usuarios", "pedidos", "planes", "membresias", "contadores"]
+COLECCIONES = ["categorias", "productos", "usuarios", "pedidos", "planes", "membresias", "contadores", "imagenes"]
+
+# Fotos de un producto: la primera es la principal (también queda en imagen_url)
+MAX_IMAGENES = 6
 
 # Ciclo de vida de un pedido:
 #   registrado ──(pago aprobado)──▶ pagado ──▶ enviado ──▶ entregado
@@ -122,6 +127,8 @@ VALIDADORES = {
             "precio": {"bsonType": ["double", "int"], "minimum": 0},
             "stock": {"bsonType": "int", "minimum": 0},
             "imagen_url": {"bsonType": "string"},
+            # Galería: URLs externas (https://…) o fotos subidas (/imagenes/<id>)
+            "imagenes": {"bsonType": "array", "maxItems": MAX_IMAGENES, "items": {"bsonType": "string"}},
             "categoria_id": {"bsonType": "int"},
         },
     },
@@ -163,6 +170,20 @@ VALIDADORES = {
                     },
                 },
             },
+        },
+    },
+    # Fotos que sube el admin. Se guardan en MongoDB (no en disco) para que
+    # no se pierdan si el backend se publica en un servicio sin disco fijo.
+    "imagenes": {
+        "bsonType": "object",
+        "required": ["_id", "tipo", "datos", "bytes"],
+        "properties": {
+            "_id": {"bsonType": "string", "pattern": "^[0-9a-f]{32}$"},
+            "tipo": {"enum": ["image/jpeg", "image/png", "image/webp"]},
+            "datos": {"bsonType": "binData"},
+            "bytes": {"bsonType": "int", "minimum": 1},
+            "creada": {"bsonType": "date"},
+            "admin_id": {"bsonType": "int"},
         },
     },
     "planes": {
@@ -282,6 +303,7 @@ def init_db(force: bool = False) -> None:
             cargar_planes()
             cargar_membresias_demo()
             print("[frecuente] Se agregaron los planes de membresía a la base existente")
+        completar_fotos_de_ejemplo()
         return
 
     for nombre in COLECCIONES:
@@ -314,6 +336,35 @@ def init_db(force: bool = False) -> None:
     cargar_planes()
     cargar_membresias_demo()
     print(f"[frecuente] Base '{DB_NAME}' creada en MongoDB desde datos_ejemplo.json")
+
+
+def completar_fotos_de_ejemplo() -> None:
+    """Base de una entrega anterior (sin fotos): a cada categoría y producto
+    de ejemplo que siga SIN imagen le pone la de datos_ejemplo.json.
+    No toca los que el admin ya editó con sus propias fotos."""
+    datos = json.loads(DATOS_PATH.read_text(encoding="utf-8"))
+    cambios = 0
+    for c in datos.get("categorias", []):
+        if c.get("imagen_url"):
+            r = db.categorias.update_one(
+                {"_id": c["id"], "imagen_url": {"$in": ["", None]}},
+                {"$set": {"imagen_url": c["imagen_url"]}},
+            )
+            cambios += r.modified_count
+    for p in datos.get("productos", []):
+        imagenes = p.get("imagenes") or ([p["imagen_url"]] if p.get("imagen_url") else [])
+        if imagenes:
+            r = db.productos.update_one(
+                {
+                    "_id": p["id"],
+                    "imagen_url": {"$in": ["", None]},
+                    "$or": [{"imagenes": {"$exists": False}}, {"imagenes": {"$size": 0}}],
+                },
+                {"$set": {"imagen_url": imagenes[0], "imagenes": imagenes}},
+            )
+            cambios += r.modified_count
+    if cambios:
+        print(f"[frecuente] Se agregaron fotos de ejemplo a {cambios} productos/categorías")
 
 
 def cargar_planes() -> None:

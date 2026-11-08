@@ -3,6 +3,7 @@ main.py — servidor FastAPI que expone un único endpoint GraphQL.
 
     POST /graphql                 (GraphiQL habilitado en GET /graphql)
     WS   /graphql                 Subscriptions en tiempo real (graphql-transport-ws)
+    GET  /imagenes/<id>           fotos de productos subidas desde el panel
     POST /webhooks/mercadopago    avisos de pago de Mercado Pago (opcional)
 
 Levantar:  uvicorn main:app --reload --port 8000
@@ -13,7 +14,9 @@ Equipo: Jehu Uribe Bermudez (23100139),
 Materia: Programacion Web II - CETI Colomos
 """
 
-from fastapi import FastAPI, Request
+import re
+
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from strawberry.fastapi import GraphQLRouter
 
@@ -51,6 +54,28 @@ app.include_router(_router(), prefix="/graphql")
 @app.get("/")
 def raiz():
     return {"api": "Frecuente", "graphql": "/graphql", "pagos": pagos.PAGOS_MODO}
+
+
+@app.get("/imagenes/{imagen_id}")
+def imagen(imagen_id: str):
+    """Fotos de productos que sube el admin (las guarda subirImagen en MongoDB).
+
+    Cada foto tiene un id al azar y nunca cambia, así que el navegador la
+    puede guardar en caché un año entero. `nosniff` evita que el navegador
+    trate el archivo como otra cosa que no sea la imagen que declaramos."""
+    if not re.fullmatch(r"[0-9a-f]{32}", imagen_id):
+        raise HTTPException(status_code=404)
+    doc = db.imagenes.find_one({"_id": imagen_id})
+    if doc is None:
+        raise HTTPException(status_code=404)
+    return Response(
+        content=bytes(doc["datos"]),
+        media_type=doc["tipo"],
+        headers={
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @app.post("/webhooks/mercadopago")

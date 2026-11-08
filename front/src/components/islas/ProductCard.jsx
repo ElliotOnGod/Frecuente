@@ -1,5 +1,6 @@
 import { useStore } from "../../store/useStore";
-import { iconoDe, pesos } from "../../lib/formato";
+import { pesos } from "../../lib/formato";
+import Foto from "./Foto";
 
 /** ProductCard — tarjeta de producto del catálogo. Dispara openProduct. */
 export default function ProductCard({ producto }) {
@@ -8,7 +9,16 @@ export default function ProductCard({ producto }) {
 
   return (
     <article className="cf-card">
-      <div className="cf-figura" aria-hidden="true">{iconoDe(producto.categoriaId)}</div>
+      <button
+        type="button"
+        className="cf-card__foto"
+        onClick={() => openProduct(producto.id)}
+        tabIndex={-1}
+        aria-hidden="true"
+      >
+        {/* Atajo con el mouse: el botón "Ver detalle" es el accesible con teclado */}
+        <Foto src={producto.imagenUrl} alt={producto.nombre} categoriaId={producto.categoriaId} ancho={480} />
+      </button>
       <div className="cf-card__cuerpo">
         <h3 className="cf-card__titulo">{producto.nombre}</h3>
         <p className="cf-card__precio">{pesos(producto.precio)}</p>

@@ -3,16 +3,56 @@ import { createPortal } from "react-dom";
 import { useGraphQLQuery } from "../../hooks/useGraphQLQuery";
 import { useStore } from "../../store/useStore";
 import { Skeleton } from "./Skeleton";
-import { iconoDe, pesos, RUTAS } from "../../lib/formato";
+import { pesos, RUTAS } from "../../lib/formato";
+import Foto from "./Foto";
 
 const QUERY_PRODUCTO = `
   query Producto($id: Int!) {
     producto(id: $id) {
-      id nombre descripcion precio stock categoriaId
+      id nombre descripcion precio stock categoriaId imagenUrl imagenes
       categoria { nombre }
     }
   }
 `;
+
+/**
+ * Galería del modal: foto grande + miniaturas para cambiarla.
+ * Con una sola foto (o ninguna) solo se ve la grande.
+ */
+function Galeria({ producto, actual, onElegir }) {
+  const fotos = producto.imagenes?.length ? producto.imagenes : [producto.imagenUrl].filter(Boolean);
+  const i = Math.min(actual, Math.max(0, fotos.length - 1));
+
+  return (
+    <div className="cf-galeria">
+      <Foto
+        key={fotos[i] || "sin-foto"}
+        src={fotos[i]}
+        alt={fotos.length > 1 ? `${producto.nombre}, foto ${i + 1} de ${fotos.length}` : producto.nombre}
+        categoriaId={producto.categoriaId}
+        ancho={640}
+        className="cf-figura--alta"
+        prioridad
+      />
+      {fotos.length > 1 && (
+        <div className="cf-galeria__miniaturas" role="group" aria-label="Fotos del producto">
+          {fotos.map((url, n) => (
+            <button
+              key={url}
+              type="button"
+              className="cf-galeria__mini"
+              aria-label={`Ver foto ${n + 1}`}
+              aria-pressed={n === i}
+              onClick={() => onElegir(n)}
+            >
+              <Foto src={url} alt="" categoriaId={producto.categoriaId} ancho={120} prioridad />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * ProductDetailModal — detalle del producto renderizado con createPortal
@@ -24,6 +64,7 @@ export default function ProductDetailModal() {
   const closeProduct = useStore((s) => s.closeProduct);
   const agregarAlCarrito = useStore((s) => s.agregarAlCarrito);
   const [cantidad, setCantidad] = useState(1);
+  const [foto, setFoto] = useState(0);
 
   const { data, loading, error } = useGraphQLQuery(
     QUERY_PRODUCTO,
@@ -32,7 +73,10 @@ export default function ProductDetailModal() {
   );
   const producto = data?.producto;
 
-  useEffect(() => setCantidad(1), [id]);
+  useEffect(() => {
+    setCantidad(1);
+    setFoto(0);
+  }, [id]);
 
   useEffect(() => {
     const onEsc = (e) => e.key === "Escape" && closeProduct();
@@ -90,9 +134,7 @@ export default function ProductDetailModal() {
 
         {producto && !loading && (
           <div className="cf-modal__cuerpo">
-            <div className="cf-figura cf-figura--alta" aria-hidden="true">
-              {iconoDe(producto.categoriaId)}
-            </div>
+            <Galeria producto={producto} actual={foto} onElegir={setFoto} />
 
             <div>
               <p className="cf-caption">{producto.categoria?.nombre}</p>

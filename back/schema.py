@@ -32,13 +32,16 @@ Materia: Programacion Web II - CETI Colomos
 """
 
 import base64
+import binascii
 import hashlib
 import hmac
 import re
+import secrets
 from datetime import datetime, timedelta
 from typing import AsyncGenerator, List, Optional
 
 import strawberry
+from bson.binary import Binary
 from pymongo import ASCENDING, DESCENDING, ReturnDocument
 from pymongo.errors import DuplicateKeyError, WriteError
 from strawberry.types import Info
@@ -54,7 +57,7 @@ from auth import (
     usuario_id_de_token,
     verificar_password,
 )
-from database import DIAS_MEMBRESIA, ESTADOS_PEDIDO, a_dict, db, siguiente_id
+from database import DIAS_MEMBRESIA, ESTADOS_PEDIDO, MAX_IMAGENES, a_dict, db, siguiente_id
 import pagos
 from pagos import METODOS, ErrorPago, modo_de, referencia_de, referencia_membresia
 
@@ -87,7 +90,8 @@ class Producto:
     descripcion: str
     precio: float
     stock: int
-    imagen_url: str
+    imagen_url: str       # la foto principal (= imagenes[0]); "" si no tiene
+    imagenes: List[str]   # galería completa, la principal primero
     categoria_id: int
 
     @strawberry.field
@@ -235,13 +239,16 @@ def _producto(doc: dict | None) -> Producto | None:
     d = a_dict(doc)
     if d is None:
         return None
+    # Productos de entregas anteriores solo traen imagen_url (sin galería)
+    imagenes = list(d.get("imagenes") or ([d["imagen_url"]] if d.get("imagen_url") else []))
     return Producto(
         id=d["id"],
         nombre=d["nombre"],
         descripcion=d.get("descripcion", ""),
         precio=float(d["precio"]),
         stock=d["stock"],
-        imagen_url=d.get("imagen_url", ""),
+        imagen_url=imagenes[0] if imagenes else "",
+        imagenes=imagenes,
         categoria_id=d["categoria_id"],
     )
 
@@ -593,6 +600,8 @@ class ProductoInput:
     precio: float = 0.0
     stock: int = 0
     imagen_url: str = ""
+    # Galería: la primera es la principal. Si viene, manda sobre imagen_url.
+    imagenes: List[str] = strawberry.field(default_factory=list)
     categoria_id: int = 1
 
 
@@ -603,6 +612,7 @@ class ProductoUpdateInput:
     precio: Optional[float] = None
     stock: Optional[int] = None
     imagen_url: Optional[str] = None
+    imagenes: Optional[List[str]] = None
     categoria_id: Optional[int] = None
 
 
@@ -1435,6 +1445,44 @@ class Query:
 # Mutation
 # =========================================================
 
+# ---------------- imágenes de productos ----------------
+
+IMAGEN_SUBIDA_RE = re.compile(r"^/imagenes/[0-9a-f]{32}$")
+IMAGEN_MAX_BYTES = 3 * 1024 * 1024   # el front ya las comprime a ~100–300 KB
+
+
+def _tipo_imagen(datos: bytes) -> str | None:
+    """Tipo real del archivo según sus primeros bytes ("número mágico"),
+    sin creerle a la extensión ni a lo que diga el navegador.
+    SVG no se acepta: puede traer JavaScript adentro."""
+    if datos.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if datos.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if datos[:4] == b"RIFF" and datos[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def _validar_imagenes(imagenes: List[str]) -> List[str]:
+    """Galería de un producto: máximo MAX_IMAGENES, sin repetidas, y cada
+    una debe ser una foto subida aquí (/imagenes/<id>) o una URL https."""
+    limpias: List[str] = []
+    for url in imagenes:
+        url = (url or "").strip()
+        if not url or url in limpias:
+            continue
+        if IMAGEN_SUBIDA_RE.match(url):
+            if db.imagenes.count_documents({"_id": url.rsplit("/", 1)[1]}, limit=1) == 0:
+                raise ValueError("Una de las imágenes ya no existe; vuelve a subirla")
+        elif not (url.startswith("https://") and len(url) <= 500 and not re.search(r"\s", url)):
+            raise ValueError("Las imágenes deben subirse desde el panel o ser una URL https://")
+        limpias.append(url)
+    if len(limpias) > MAX_IMAGENES:
+        raise ValueError(f"Máximo {MAX_IMAGENES} imágenes por producto")
+    return limpias
+
+
 def _validar_categoria(categoria_id: int) -> None:
     # Mongo no tiene llaves foráneas: la integridad se revisa aquí
     if db.categorias.count_documents({"_id": categoria_id}, limit=1) == 0:
@@ -1499,16 +1547,22 @@ class Mutation:
     def crear_producto(self, info: Info, input: ProductoInput) -> Producto:
         requiere_admin(info)
         _validar_categoria(input.categoria_id)
+        if not input.nombre.strip():
+            raise ValueError("Escribe el nombre del producto")
         if input.precio < 0 or input.stock < 0:
             raise ValueError("Precio y stock no pueden ser negativos")
+        imagenes = _validar_imagenes(
+            input.imagenes or ([input.imagen_url] if input.imagen_url else [])
+        )
 
         doc = {
             "_id": siguiente_id("productos"),
-            "nombre": input.nombre,
+            "nombre": input.nombre.strip(),
             "descripcion": input.descripcion,
             "precio": float(input.precio),
             "stock": input.stock,
-            "imagen_url": input.imagen_url,
+            "imagen_url": imagenes[0] if imagenes else "",
+            "imagenes": imagenes,
             "categoria_id": input.categoria_id,
         }
         db.productos.insert_one(doc)
@@ -1527,6 +1581,17 @@ class Mutation:
         }
         cambios = {k: v for k, v in campos.items() if v is not None}
 
+        # La galería manda: la principal (imagenes[0]) también queda en imagen_url
+        if input.imagenes is not None or "imagen_url" in cambios:
+            lista = input.imagenes if input.imagenes is not None else [cambios["imagen_url"]]
+            imagenes = _validar_imagenes(lista)
+            cambios["imagenes"] = imagenes
+            cambios["imagen_url"] = imagenes[0] if imagenes else ""
+
+        if "nombre" in cambios:
+            if not cambios["nombre"].strip():
+                raise ValueError("Escribe el nombre del producto")
+            cambios["nombre"] = cambios["nombre"].strip()
         if "categoria_id" in cambios:
             _validar_categoria(cambios["categoria_id"])
 
@@ -1548,6 +1613,42 @@ class Mutation:
         if "stock" in cambios:
             _avisar_stock_bajo([id])
         return _producto(doc)
+
+    @strawberry.mutation
+    def subir_imagen(self, info: Info, datos: str) -> str:
+        """Sube una foto (en base64) y regresa su ruta: /imagenes/<id>.
+        Después se pone en la galería del producto con crear/actualizarProducto.
+
+        Se guarda en MongoDB y la sirve GET /imagenes/<id> (main.py).
+        Solo se aceptan JPEG, PNG y WebP de hasta 3 MB, revisando los bytes
+        del archivo (no la extensión)."""
+        admin = requiere_admin(info)
+        if datos.startswith("data:") and "," in datos[:100]:
+            datos = datos.split(",", 1)[1]  # quita el "data:image/webp;base64,"
+        if len(datos) > IMAGEN_MAX_BYTES * 4 // 3 + 8:
+            raise ValueError("La imagen pesa más de 3 MB")
+        try:
+            contenido = base64.b64decode(datos, validate=True)
+        except (binascii.Error, ValueError):
+            raise ValueError("La imagen llegó dañada; intenta de nuevo")
+        tipo = _tipo_imagen(contenido)
+        if tipo is None:
+            raise ValueError("Solo se aceptan imágenes JPG, PNG o WebP")
+        if len(contenido) > IMAGEN_MAX_BYTES:
+            raise ValueError("La imagen pesa más de 3 MB")
+
+        imagen_id = secrets.token_hex(16)
+        db.imagenes.insert_one(
+            {
+                "_id": imagen_id,
+                "tipo": tipo,
+                "datos": Binary(contenido),
+                "bytes": len(contenido),
+                "creada": _ahora(),
+                "admin_id": admin["_id"],
+            }
+        )
+        return f"/imagenes/{imagen_id}"
 
     @strawberry.mutation
     def eliminar_producto(self, info: Info, id: int) -> bool:
