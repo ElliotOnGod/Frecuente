@@ -1,4 +1,5 @@
 import { useGraphQLQuery } from "../../hooks/useGraphQLQuery";
+import { RUTAS } from "../../lib/formato";
 import Sidebar from "./Sidebar";
 import CategoryGrid from "./CategoryGrid";
 import { SkeletonGrid } from "./Skeleton";
@@ -9,6 +10,7 @@ const QUERY_CATEGORIAS = `
       id nombre descripcion imagenUrl
       productos { id }
     }
+    metodosPreparacion { clave nombre }
   }
 `;
 
@@ -38,6 +40,18 @@ export default function CatalogoHome({ children }) {
         )}
 
         {!loading && !error && <CategoryGrid categorias={categorias} />}
+
+        {!loading && !error && (
+          <section aria-labelledby="titulo-metodos" className="cf-por-metodo">
+            <h2 id="titulo-metodos">¿Cómo lo preparas?</h2>
+            <div className="cf-chips">
+              {(data?.metodosPreparacion ?? []).map((m) => (
+                <a key={m.clave} className="cf-chip" href={RUTAS.tiendaMetodo(m.clave)}>{m.nombre}</a>
+              ))}
+              <a className="cf-chip cf-chip--fuerte" href={RUTAS.tienda}>Ver toda la tienda →</a>
+            </div>
+          </section>
+        )}
 
         {children}
       </main>

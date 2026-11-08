@@ -1,0 +1,37 @@
+# =========================================================
+# Recompras diarias: le pide al backend que genere los pedidos de las
+# suscripciones a las que ya les tocó (POST /tareas/recompras).
+#
+# El backend ya las revisa cada hora mientras está despierto; este cron es
+# el respaldo para el plan gratis de Render, que duerme el servidor cuando
+# no hay visitas (la petición lo despierta).
+#
+# Configura en Settings → Secrets and variables → Actions:
+#   vars.BACKEND_URL     https://<backend>.onrender.com
+#   secrets.CRON_SECRET  la misma clave que CRON_SECRET en Render
+# =========================================================
+name: Recompras diarias
+
+on:
+  schedule:
+    - cron: "0 14 * * *"   # 14:00 UTC = 8:00 en Guadalajara
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recompras:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generar los pedidos de recompra del día
+        env:
+          URL: ${{ vars.BACKEND_URL }}
+          CLAVE: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$CLAVE" ]; then
+            echo "::notice::Falta BACKEND_URL o CRON_SECRET; no se hace nada."
+            exit 0
+          fi
+          curl -fsS --retry 4 --retry-delay 30 --retry-all-errors --max-time 120 \
+            -X POST "$URL/tareas/recompras" -H "X-Cron-Secret: $CLAVE"

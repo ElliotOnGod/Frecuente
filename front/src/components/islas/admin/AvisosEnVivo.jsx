@@ -57,9 +57,10 @@ export default function AvisosEnVivo() {
         );
       },
     });
+    const pendientes = timers.current;
     return () => {
       cancelar();
-      timers.current.forEach(clearTimeout);
+      pendientes.forEach(clearTimeout);
     };
   }, [esAdmin, setEstado, agregar]);
 

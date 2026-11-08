@@ -1,6 +1,7 @@
 import { useStore } from "../../store/useStore";
 import { pesos, RUTAS } from "../../lib/formato";
 import { usePedidoPendiente } from "../../hooks/usePedidoPendiente";
+import { claveDe, subtotalDe } from "../../lib/carrito";
 import Foto from "./Foto";
 
 /** Cart — lista editable del carrito, subtotal y paso a checkout. */
@@ -9,7 +10,7 @@ export default function Cart() {
   const cambiarCantidad = useStore((s) => s.cambiarCantidad);
   const quitarDelCarrito = useStore((s) => s.quitarDelCarrito);
 
-  const subtotal = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0);
+  const subtotal = subtotalDe(carrito);
   const { pendiente } = usePedidoPendiente();
 
   if (carrito.length === 0) {
@@ -19,7 +20,7 @@ export default function Cart() {
         <p className="cf-vacio">
           Todavía no agregas nada. Empieza por el catálogo y elige tu café.
         </p>
-        <a className="cf-btn" href={RUTAS.inicio}>Ver el catálogo</a>
+        <a className="cf-btn" href={RUTAS.tienda}>Ver la tienda</a>
       </>
     );
   }
@@ -48,11 +49,14 @@ export default function Cart() {
         </thead>
         <tbody>
           {carrito.map((item) => (
-            <tr key={item.id}>
+            <tr key={claveDe(item)}>
               <td>
                 <span className="cf-prod-celda">
                   <Foto src={item.imagenUrl} categoriaId={item.categoriaId} ancho={96} className="cf-miniatura" />
-                  {item.nombre}
+                  <span>
+                    {item.nombre}
+                    {item.variante && <span className="cf-caption cf-bloque">{item.variante}</span>}
+                  </span>
                 </span>
               </td>
               <td>
@@ -64,7 +68,7 @@ export default function Cart() {
                   max={item.stock}
                   value={item.cantidad}
                   aria-label={`Cantidad de ${item.nombre}`}
-                  onChange={(e) => cambiarCantidad(item.id, Number(e.target.value))}
+                  onChange={(e) => cambiarCantidad(claveDe(item), Number(e.target.value))}
                 />
               </td>
               <td className="cf-num">{pesos(item.precio)}</td>
@@ -73,7 +77,7 @@ export default function Cart() {
                 <button
                   className="cf-btn cf-btn--icono"
                   aria-label={`Quitar ${item.nombre}`}
-                  onClick={() => quitarDelCarrito(item.id)}
+                  onClick={() => quitarDelCarrito(claveDe(item))}
                 >
                   ✕
                 </button>
@@ -86,7 +90,7 @@ export default function Cart() {
       <div className="cf-resumen">
         <span className="cf-total">Subtotal: {pesos(subtotal)}</span>
         <div className="cf-acciones">
-          <a className="cf-btn cf-btn--secundario" href={RUTAS.inicio}>
+          <a className="cf-btn cf-btn--secundario" href={RUTAS.tienda}>
             Seguir comprando
           </a>
           <a className="cf-btn" href={RUTAS.checkout}>

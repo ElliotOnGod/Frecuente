@@ -20,6 +20,11 @@ const ruta = Astro.url.pathname;
           </a>
         </li>
         <li>
+          <a class="cf-nav__link" href="/tienda" aria-current={ruta.startsWith("/tienda") || ruta.startsWith("/categoria") ? "page" : undefined}>
+            Tienda
+          </a>
+        </li>
+        <li>
           <a
             class="cf-nav__link"
             href="/membresias"

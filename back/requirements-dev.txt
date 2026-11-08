@@ -1,0 +1,5 @@
+# Herramientas para desarrollo y para el pipeline de CI (no van a producción)
+-r requirements.txt
+pytest>=8
+httpx>=0.27
+ruff>=0.6

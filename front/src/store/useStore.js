@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import * as reglas from "../lib/carrito";
 
 /**
  * Store global (Zustand): sesión, carrito, último pedido y producto abierto
@@ -36,7 +37,7 @@ export const useStore = create(
       // el pago se aprueba. Mientras tanto se recuerda:
       //   pedidoPendiente   id del pedido que espera pago (para no crear otro igual)
       //   pendienteUsuario  de qué cuenta es ese pedido
-      //   pendienteItems    qué productos se pidieron [{ id, cantidad }]
+      //   pendienteItems    qué renglones se pidieron [{ clave, id, cantidad }]
       pedido: null,
       pedidoPendiente: null,
       pendienteUsuario: null,
@@ -46,7 +47,7 @@ export const useStore = create(
           pedido,
           pedidoPendiente: pedido.id,
           pendienteUsuario: s.sesion?.usuario?.id ?? null,
-          pendienteItems: s.carrito.map((i) => ({ id: i.id, cantidad: i.cantidad })),
+          pendienteItems: s.carrito.map((i) => ({ clave: reglas.claveDe(i), id: i.id, cantidad: i.cantidad })),
           selectedProductId: null,
         })),
 
@@ -56,12 +57,7 @@ export const useStore = create(
         set((s) => {
           if (s.pedidoPendiente !== pedidoId) return {};
           const libre = { pedidoPendiente: null, pendienteUsuario: null, pendienteItems: null };
-          if (!s.pendienteItems) return { ...libre, carrito: [] };
-          const pedidos = new Map(s.pendienteItems.map((i) => [i.id, i.cantidad]));
-          const carrito = s.carrito
-            .map((i) => ({ ...i, cantidad: i.cantidad - (pedidos.get(i.id) ?? 0) }))
-            .filter((i) => i.cantidad > 0);
-          return { ...libre, carrito };
+          return { ...libre, carrito: reglas.restarPedido(s.carrito, s.pendienteItems) };
         }),
 
       // El pedido pendiente se canceló: el carrito se queda para volver a intentar
@@ -73,55 +69,34 @@ export const useStore = create(
         ),
 
       // ---- carrito ----
-      carrito: [], // [{ id, nombre, precio, cantidad, stock, categoriaId, imagenUrl }]
+      // [{ clave, id, variante, nombre, precio, cantidad, stock, categoriaId, imagenUrl, pesoKg }]
+      // Las reglas (stock compartido entre variantes, etc.) están en lib/carrito.js
+      carrito: [],
 
-      agregarAlCarrito: (producto, cantidad = 1) =>
-        set((state) => {
-          const existente = state.carrito.find((i) => i.id === producto.id);
-          if (existente) {
-            return {
-              carrito: state.carrito.map((i) =>
-                i.id === producto.id
-                  ? { ...i, cantidad: Math.min(i.cantidad + cantidad, producto.stock) }
-                  : i
-              ),
-            };
-          }
-          return {
-            carrito: [
-              ...state.carrito,
-              {
-                id: producto.id,
-                nombre: producto.nombre,
-                precio: producto.precio,
-                stock: producto.stock,
-                categoriaId: producto.categoriaId,
-                imagenUrl: producto.imagenUrl || "",
-                cantidad,
-              },
-            ],
-          };
-        }),
+      agregarAlCarrito: (producto, cantidad = 1, variante = "") =>
+        set((state) => ({ carrito: reglas.agregarItem(state.carrito, producto, cantidad, variante) })),
 
-      cambiarCantidad: (id, cantidad) =>
-        set((state) => ({
-          carrito: state.carrito.map((i) =>
-            i.id === id ? { ...i, cantidad: Math.max(1, Math.min(cantidad, i.stock)) } : i
-          ),
-        })),
+      cambiarCantidad: (clave, cantidad) =>
+        set((state) => ({ carrito: reglas.cambiarCantidad(state.carrito, clave, cantidad) })),
 
-      quitarDelCarrito: (id) =>
-        set((state) => ({ carrito: state.carrito.filter((i) => i.id !== id) })),
+      quitarDelCarrito: (clave) =>
+        set((state) => ({ carrito: state.carrito.filter((i) => reglas.claveDe(i) !== clave) })),
 
       vaciarCarrito: () =>
         set({ carrito: [], pedidoPendiente: null, pendienteUsuario: null, pendienteItems: null }),
 
       // ---- derivados ----
       totalPiezas: () => get().carrito.reduce((acc, i) => acc + i.cantidad, 0),
-      subtotal: () => get().carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0),
+      subtotal: () => reglas.subtotalDe(get().carrito),
     }),
     {
       name: "frecuente-carrito",
+      // v1: los renglones guardados antes de las variantes reciben su clave
+      version: 1,
+      migrate: (guardado) => ({
+        ...guardado,
+        carrito: (guardado?.carrito ?? []).map((i) => ({ variante: "", ...i, clave: reglas.claveDe(i) })),
+      }),
       // En el servidor (build de Astro) no existe localStorage: se usa un
       // almacenamiento vacío para que no truene el render estático.
       storage: createJSONStorage(() =>

@@ -1,0 +1,10 @@
+---
+/** /admin/recompras — panel de administración: suscripciones de recompra. */
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import AdminRecompras from "../../components/islas/admin/AdminRecompras.jsx";
+---
+<AdminLayout titulo="Recompras">
+  <AdminRecompras client:only="react">
+    <h1 slot="fallback">Recompras</h1>
+  </AdminRecompras>
+</AdminLayout>

@@ -1,4 +1,4 @@
-import { ESTADO_MEMBRESIA, ESTADO_PAGO, ESTADO_PEDIDO } from "../../lib/formato";
+import { ESTADO_CORREO, ESTADO_MEMBRESIA, ESTADO_PAGO, ESTADO_PEDIDO, ESTADO_SUSCRIPCION } from "../../lib/formato";
 
 /**
  * Insignia de estado. Lleva siempre la palabra; el color solo refuerza
@@ -21,6 +21,16 @@ export function EstadoPago({ estado }) {
 
 export function EstadoMembresia({ estado }) {
   const e = ESTADO_MEMBRESIA[estado] || { texto: estado, tono: "neutro" };
+  return <Insignia tono={e.tono}>{e.texto}</Insignia>;
+}
+
+export function EstadoSuscripcion({ estado }) {
+  const e = ESTADO_SUSCRIPCION[estado] || { texto: estado, tono: "neutro" };
+  return <Insignia tono={e.tono}>{e.texto}</Insignia>;
+}
+
+export function EstadoCorreo({ estado }) {
+  const e = ESTADO_CORREO[estado] || { texto: estado, tono: "neutro" };
   return <Insignia tono={e.tono}>{e.texto}</Insignia>;
 }
 

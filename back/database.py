@@ -1,40 +1,39 @@
 """
-database.py — conexión a MongoDB e inicialización automática.
+database.py — conexión a MongoDB e inicialización de las DOS bases.
 
-Modelo de documentos (equivale al DER del Reporte P6):
+Desde esta entrega Frecuente usa persistencia políglota:
+
+  MongoDB (aquí)       catálogo y membresías, documentos flexibles
+  PostgreSQL           usuarios, pedidos, pagos, envíos, recompras y correos
+                       (ver relacional.py y back/sql/)
+
+Modelo de documentos en MongoDB:
 
     categorias  { _id, nombre, descripcion, imagen_url }
     productos   { _id, nombre, descripcion, precio, stock, imagen_url, imagenes: [..],
-                  categoria_id }
+                  categoria_id, variante_nombre, variantes: [..], metodos: [..], peso_kg }
     imagenes    { _id: "<hex>", tipo, datos (binario), bytes, creada, admin_id }
-    usuarios    { _id, nombre, email, telefono, rol, password_hash, creado }
-    pedidos     { _id, usuario_id, fecha, estado, total,
-                  items: [ { producto_id, cantidad, precio_unit } ],
-                  pago:  { metodo, estado, modo, referencia, proveedor_id,
-                           pago_id, detalle, intentos, fecha_pago, actualizado } }
     planes      { _id, nombre, descripcion, precio, incluye: [..], opciones: [..],
                   activo, orden }
     membresias  { _id, usuario_id, plan_id, estado, precio, creada, inicio, fin,
-                  pago: { …igual que en pedidos… },
+                  pago: { metodo, estado, modo, referencia, ... },
                   canjes: [ { dia, fecha, opcion, nota, admin_id } ] }
-    contadores  { _id: "<colección>", valor }   ← ids numéricos consecutivos
+    contadores  { _id: "<colección>", valor }   <- ids numéricos consecutivos
+
+Variantes: un café se vende "en grano", "molido para espresso", "para V60"...
+sin duplicar el producto: es el MISMO producto (mismo precio y stock) y la
+variante elegida se guarda en el renglón del pedido. `metodos` son los
+métodos de preparación para los que sirve (filtro del catálogo).
 
 Membresía: el cliente paga un plan mensual y cada día puede canjear UNA
 vez su beneficio en el local. Los canjes van EMBEBIDOS (se leen siempre con
 su membresía y son pocos: máximo ~31 por mes). El plan va por REFERENCIA
 porque varias membresías comparten el mismo plan y su precio puede cambiar
 (por eso la membresía guarda `precio`, el precio con el que se vendió).
+membresias.usuario_id apunta a usuarios.id de PostgreSQL.
 
-El pago también va EMBEBIDO: un pedido tiene un solo cobro y siempre se
-muestra junto con él (método, estado y referencia del proveedor).
-
-Los PedidoItem van EMBEBIDOS dentro de su pedido: siempre se leen juntos y
-no tienen vida propia, que es el caso típico para embeber en MongoDB.
-Categoría→producto y usuario→pedido se dejan como REFERENCIA por id, porque
-un producto se consulta solo y un usuario acumula muchos pedidos.
-
-Los _id son enteros (1, 2, 3…) en lugar de ObjectId para que la API GraphQL
-y el front sigan usando ids numéricos, igual que en el avance anterior.
+Los _id son enteros (1, 2, 3...) en lugar de ObjectId para que la API GraphQL
+y el front usen ids numéricos.
 
 Equipo: Jehu Uribe Bermudez (23100139),
         Jose Fernando Leon Lopez (23100146),
@@ -50,6 +49,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from pymongo import ASCENDING, MongoClient, ReturnDocument
 
+import relacional
 from auth import hashear_password
 from pagos import ESTADOS_PAGO, METODOS
 
@@ -65,7 +65,10 @@ DB_NAME = os.getenv("MONGO_DB", "frecuente")
 client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000, tz_aware=False)
 db = client[DB_NAME]
 
-COLECCIONES = ["categorias", "productos", "usuarios", "pedidos", "planes", "membresias", "contadores", "imagenes"]
+COLECCIONES = ["categorias", "productos", "planes", "membresias", "contadores", "imagenes"]
+# Colecciones de entregas anteriores que ahora viven en PostgreSQL. Solo se
+# leen una vez para migrarlas (relacional.inicializar) y luego no se usan.
+COLECCIONES_MIGRADAS = ["usuarios", "pedidos"]
 
 # Fotos de un producto: la primera es la principal (también queda en imagen_url)
 MAX_IMAGENES = 6
@@ -82,6 +85,16 @@ ESTADOS_PEDIDO = ["registrado", "pagado", "enviado", "entregado", "cancelado"]
 # "vencida" no se guarda: se calcula comparando `fin` con la fecha actual.
 ESTADOS_MEMBRESIA = ["pendiente", "activa", "cancelada"]
 DIAS_MEMBRESIA = 30
+
+# Métodos de preparación para el filtro del catálogo
+METODOS_PREPARACION = {
+    "espresso": "Espresso y latte",
+    "filtro": "V60 / Chemex",
+    "prensa": "Prensa francesa",
+    "goteo": "Cafetera de goteo",
+    "frio": "Bebidas frías",
+    "batido": "Matcha batido",
+}
 
 
 # ---------------------------------------------------------
@@ -130,46 +143,10 @@ VALIDADORES = {
             # Galería: URLs externas (https://…) o fotos subidas (/imagenes/<id>)
             "imagenes": {"bsonType": "array", "maxItems": MAX_IMAGENES, "items": {"bsonType": "string"}},
             "categoria_id": {"bsonType": "int"},
-        },
-    },
-    "usuarios": {
-        "bsonType": "object",
-        "required": ["_id", "nombre", "email", "rol", "password_hash"],
-        "properties": {
-            "_id": {"bsonType": "int"},
-            "nombre": {"bsonType": "string", "minLength": 1},
-            "email": {"bsonType": "string", "pattern": "^.+@.+$"},
-            "telefono": {"bsonType": "string"},
-            "rol": {"enum": ["cliente", "admin"]},
-            "password_hash": {"bsonType": "string"},
-            "creado": {"bsonType": "date"},
-        },
-    },
-    "pedidos": {
-        "bsonType": "object",
-        "required": ["_id", "usuario_id", "fecha", "estado", "total", "items"],
-        "properties": {
-            "_id": {"bsonType": "int"},
-            "usuario_id": {"bsonType": "int"},
-            "fecha": {"bsonType": "date"},
-            "estado": {"enum": ESTADOS_PEDIDO},
-            "total": {"bsonType": ["double", "int"], "minimum": 0},
-            # Subdocumento del cobro (se agregó en la entrega de pagos).
-            # Es opcional para que los pedidos viejos sigan siendo válidos.
-            "pago": ESQUEMA_PAGO,
-            "items": {
-                "bsonType": "array",
-                "minItems": 1,
-                "items": {
-                    "bsonType": "object",
-                    "required": ["producto_id", "cantidad", "precio_unit"],
-                    "properties": {
-                        "producto_id": {"bsonType": "int"},
-                        "cantidad": {"bsonType": "int", "minimum": 1},
-                        "precio_unit": {"bsonType": ["double", "int"], "minimum": 0},
-                    },
-                },
-            },
+            "variante_nombre": {"bsonType": "string"},
+            "variantes": {"bsonType": "array", "maxItems": 12, "items": {"bsonType": "string"}},
+            "metodos": {"bsonType": "array", "items": {"enum": list(METODOS_PREPARACION)}},
+            "peso_kg": {"bsonType": ["double", "int"], "minimum": 0},
         },
     },
     # Fotos que sube el admin. Se guardan en MongoDB (no en disco) para que
@@ -265,12 +242,7 @@ def _crear_indices() -> None:
     """Índices: equivalen a las llaves foráneas indexadas y al UNIQUE de SQL.
     create_index no hace nada si el índice ya existe."""
     db.productos.create_index([("categoria_id", ASCENDING)])
-    db.usuarios.create_index([("email", ASCENDING)], unique=True)
-    db.pedidos.create_index([("usuario_id", ASCENDING), ("fecha", ASCENDING)])
-    db.pedidos.create_index([("items.producto_id", ASCENDING)])
-    # Para el panel de administración (filtros por estado y método)
-    db.pedidos.create_index([("estado", ASCENDING), ("fecha", ASCENDING)])
-    db.pedidos.create_index([("pago.metodo", ASCENDING)])
+    db.productos.create_index([("metodos", ASCENDING)])
     # Membresías: las de un usuario y las activas por fecha de fin
     db.membresias.create_index([("usuario_id", ASCENDING), ("creada", ASCENDING)])
     db.membresias.create_index([("estado", ASCENDING), ("fin", ASCENDING)])
@@ -282,18 +254,26 @@ def _actualizar_validadores() -> None:
     for nombre, esquema in VALIDADORES.items():
         try:
             db.command("collMod", nombre, validator={"$jsonSchema": esquema})
-        except Exception:
+        except Exception as e:
             # Por ejemplo, en una base de pruebas en memoria que no lo soporta
-            pass
+            print(f"[frecuente] No se actualizó el validador de {nombre}: {e}")
 
 
 def init_db(force: bool = False) -> None:
-    """Crea colecciones, validadores e índices y carga datos_ejemplo.json.
-    Si ya hay productos solo actualiza validadores e índices, salvo que
-    force=True (entonces borra todo y vuelve a cargar los datos)."""
-    if db.productos.estimated_document_count() > 0 and not force:
-        # Base de una entrega anterior: se agregan las colecciones nuevas
-        # (planes y membresías) sin tocar lo que ya había.
+    """Prepara MongoDB (catálogo, planes, membresías) y PostgreSQL (usuarios,
+    pedidos...). Si ya hay datos solo agrega lo que falte, salvo force=True:
+    entonces borra todo y vuelve a cargar los datos de ejemplo."""
+    datos = json.loads(DATOS_PATH.read_text(encoding="utf-8"))
+
+    if force:
+        relacional.reiniciar()
+        for nombre in COLECCIONES + COLECCIONES_MIGRADAS:
+            db.drop_collection(nombre)
+
+    if db.productos.estimated_document_count() == 0:
+        _cargar_catalogo(datos)
+    else:
+        # Base de una entrega anterior: agrega colecciones y campos nuevos
         for nombre, esquema in VALIDADORES.items():
             if nombre not in db.list_collection_names():
                 db.create_collection(nombre, validator={"$jsonSchema": esquema})
@@ -301,48 +281,41 @@ def init_db(force: bool = False) -> None:
         _crear_indices()
         if db.planes.estimated_document_count() == 0:
             cargar_planes()
-            cargar_membresias_demo()
-            print("[frecuente] Se agregaron los planes de membresía a la base existente")
-        completar_fotos_de_ejemplo()
-        return
+        completar_catalogo_de_ejemplo(datos)
 
+    # PostgreSQL: crea las tablas y migra o carga usuarios y pedidos
+    relacional.inicializar(db, datos, hashear_password)
+
+    if db.membresias.estimated_document_count() == 0:
+        cargar_membresias_demo()
+
+
+def _cargar_catalogo(datos: dict) -> None:
     for nombre in COLECCIONES:
         db.drop_collection(nombre)
-
     for nombre, esquema in VALIDADORES.items():
         db.create_collection(nombre, validator={"$jsonSchema": esquema})
-
     _crear_indices()
-
-    datos = json.loads(DATOS_PATH.read_text(encoding="utf-8"))
-    for coleccion in ("categorias", "productos", "usuarios"):
+    for coleccion in ("categorias", "productos"):
         docs = []
         for d in datos[coleccion]:
             d = dict(d)
             d["_id"] = d.pop("id")
             if "precio" in d:
                 d["precio"] = float(d["precio"])
-            if "password" in d:
-                # El JSON trae la contraseña demo en texto; aquí se guarda el hash
-                d["password_hash"] = hashear_password(d.pop("password"))
-                d["email"] = d["email"].lower()
-                d["creado"] = datetime.now().replace(microsecond=0)
+            if "peso_kg" in d:
+                d["peso_kg"] = float(d["peso_kg"])
             docs.append(d)
         db[coleccion].insert_many(docs)
         db.contadores.insert_one({"_id": coleccion, "valor": max(d["_id"] for d in docs)})
-
-    db.contadores.insert_one({"_id": "pedidos", "valor": 0})
-    cargar_pedidos_demo()
     cargar_planes()
-    cargar_membresias_demo()
-    print(f"[frecuente] Base '{DB_NAME}' creada en MongoDB desde datos_ejemplo.json")
+    print(f"[frecuente] Catálogo '{DB_NAME}' creado en MongoDB desde datos_ejemplo.json")
 
 
-def completar_fotos_de_ejemplo() -> None:
-    """Base de una entrega anterior (sin fotos): a cada categoría y producto
-    de ejemplo que siga SIN imagen le pone la de datos_ejemplo.json.
-    No toca los que el admin ya editó con sus propias fotos."""
-    datos = json.loads(DATOS_PATH.read_text(encoding="utf-8"))
+def completar_catalogo_de_ejemplo(datos: dict) -> None:
+    """Base de una entrega anterior: a cada producto/categoría de ejemplo le
+    pone lo que le falte (fotos, variantes, métodos, peso) SIN tocar lo que
+    el admin ya editó."""
     cambios = 0
     for c in datos.get("categorias", []):
         if c.get("imagen_url"):
@@ -363,8 +336,13 @@ def completar_fotos_de_ejemplo() -> None:
                 {"$set": {"imagen_url": imagenes[0], "imagenes": imagenes}},
             )
             cambios += r.modified_count
+        for campo in ("variante_nombre", "variantes", "metodos", "peso_kg"):
+            if campo in p:
+                valor = float(p[campo]) if campo == "peso_kg" else p[campo]
+                r = db.productos.update_one({"_id": p["id"], campo: {"$exists": False}}, {"$set": {campo: valor}})
+                cambios += r.modified_count
     if cambios:
-        print(f"[frecuente] Se agregaron fotos de ejemplo a {cambios} productos/categorías")
+        print(f"[frecuente] Se completaron {cambios} datos de ejemplo del catálogo")
 
 
 def cargar_planes() -> None:
@@ -393,7 +371,7 @@ def cargar_membresias_demo() -> None:
     from pagos import modo_de, referencia_membresia
 
     planes = {p["_id"]: p for p in db.planes.find()}
-    usuarios = {u["email"]: u["_id"] for u in db.usuarios.find({"rol": "cliente"})}
+    usuarios = relacional.usuarios_por_email()
     if not planes or not usuarios:
         return
 
@@ -448,109 +426,6 @@ def cargar_membresias_demo() -> None:
                     "actualizado": inicio or ahora,
                 },
                 "canjes": canjes,
-            }
-        )
-
-
-def cargar_pedidos_demo(cantidad: int = 36, dias: int = 30) -> None:
-    """Historial de pedidos de ejemplo repartidos en los últimos `dias`,
-    para que el panel de administración tenga algo que mostrar en la demo.
-
-    Son ventas "pasadas": no descuentan stock. Se generan con una semilla
-    fija, así siempre salen los mismos pedidos (pero con fechas recientes)."""
-    import random
-    from datetime import timedelta
-
-    from pagos import modo_de, referencia_de
-
-    azar = random.Random(2026)
-    productos = list(db.productos.find())
-    clientes = [u["_id"] for u in db.usuarios.find({"rol": "cliente"})]
-    if not productos or not clientes:
-        return
-
-    metodos = ["mercadopago"] * 5 + ["paypal"] * 2 + ["transferencia"] * 2 + ["efectivo"]
-    ahora = datetime.now().replace(microsecond=0)
-
-    # Primero las fechas, ordenadas, para que los ids queden en orden cronológico
-    fechas = []
-    for _ in range(cantidad):
-        dias_atras = azar.randint(0, dias - 1)
-        fecha = (ahora - timedelta(days=dias_atras)).replace(
-            hour=azar.randint(8, 20), minute=azar.randint(0, 59), second=0
-        )
-        if fecha > ahora:
-            fecha = ahora - timedelta(minutes=azar.randint(5, 120))
-        fechas.append(fecha)
-    fechas.sort()
-
-    # Los últimos pedidos se fijan a mano para que la demo tenga de todo:
-    # pagos pendientes, uno rechazado y uno cancelado por reembolsar.
-    especiales = {
-        cantidad - 1: ("transferencia", "registrado", "pendiente", 2),
-        cantidad - 2: ("mercadopago", "registrado", "rechazado", 5),
-        cantidad - 3: ("efectivo", "registrado", "pendiente", 9),
-        cantidad - 4: ("paypal", "cancelado", "por_reembolsar", 20),
-    }
-
-    for indice, fecha in enumerate(fechas):
-        if indice in especiales:
-            fecha = ahora - timedelta(hours=especiales[indice][3])
-        dias_atras = (ahora.date() - fecha.date()).days
-
-        elegidos = azar.sample(productos, k=azar.randint(1, 3))
-        items = [
-            {"producto_id": p["_id"], "cantidad": azar.randint(1, 3), "precio_unit": float(p["precio"])}
-            for p in elegidos
-        ]
-        total = round(sum(i["cantidad"] * i["precio_unit"] for i in items), 2)
-        metodo = azar.choice(metodos)
-
-        # Los pedidos viejos ya avanzaron; los de los últimos días siguen en proceso
-        if dias_atras >= 5:
-            estado = azar.choice(["entregado"] * 6 + ["enviado"] + ["cancelado"])
-        elif dias_atras >= 2:
-            estado = azar.choice(["pagado", "enviado", "entregado", "registrado"])
-        else:
-            estado = azar.choice(["registrado", "pagado", "pagado"])
-
-        if metodo == "efectivo" and estado in ("pagado", "enviado"):
-            # En efectivo no hay envío: se cobra y se entrega en el local
-            estado = "entregado" if dias_atras >= 2 else "registrado"
-
-        if estado == "cancelado":
-            estado_pago = azar.choice(["rechazado", "pendiente"])
-        elif estado == "registrado":
-            estado_pago = "pendiente" if metodo != "mercadopago" else azar.choice(["pendiente", "rechazado"])
-        else:
-            estado_pago = "aprobado"
-
-        if indice in especiales:
-            metodo, estado, estado_pago, _ = especiales[indice]
-
-        _id = siguiente_id("pedidos")
-        db.pedidos.insert_one(
-            {
-                "_id": _id,
-                "usuario_id": azar.choice(clientes),
-                "fecha": fecha,
-                "estado": estado,
-                "total": total,
-                "items": items,
-                "pago": {
-                    "metodo": metodo,
-                    "estado": estado_pago,
-                    "modo": modo_de(metodo),
-                    "referencia": referencia_de(_id),
-                    "proveedor_id": "",
-                    "pago_id": f"DEMO-{_id}" if estado_pago in ("aprobado", "por_reembolsar") else "",
-                    "detalle": "Pedido de ejemplo",
-                    "intentos": 1,
-                    "fecha_pago": fecha + timedelta(minutes=3)
-                    if estado_pago in ("aprobado", "por_reembolsar")
-                    else None,
-                    "actualizado": fecha,
-                },
             }
         )
 

@@ -1,0 +1,10 @@
+---
+/** /admin/integraciones — panel: APIs de terceros, servidor MCP y bitácora de correos. */
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import AdminIntegraciones from "../../components/islas/admin/AdminIntegraciones.jsx";
+---
+<AdminLayout titulo="Integraciones">
+  <AdminIntegraciones client:only="react">
+    <h1 slot="fallback">Integraciones</h1>
+  </AdminIntegraciones>
+</AdminLayout>

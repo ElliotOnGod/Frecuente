@@ -11,7 +11,8 @@
 import { useStore } from "../store/useStore";
 
 const API_URL = import.meta.env.PUBLIC_API_URL || "http://localhost:8000/graphql";
-const SESION_EXPIRADA = "Tu sesión expiró";
+// Mensajes del backend que significan "tu token ya no sirve"
+const SESION_TERMINADA = ["Tu sesión expiró", "Tu cuenta está desactivada"];
 
 export async function graphqlRequest(query, variables = {}) {
   const token = useStore.getState().sesion?.token;
@@ -32,7 +33,7 @@ export async function graphqlRequest(query, variables = {}) {
   const json = await res.json();
   if (json.errors?.length) {
     const mensaje = json.errors[0].message;
-    if (mensaje.startsWith(SESION_EXPIRADA)) useStore.getState().cerrarSesion();
+    if (SESION_TERMINADA.some((m) => mensaje.startsWith(m))) useStore.getState().cerrarSesion();
     throw new Error(mensaje);
   }
   return json.data;

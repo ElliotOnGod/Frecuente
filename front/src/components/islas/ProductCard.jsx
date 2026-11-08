@@ -22,6 +22,9 @@ export default function ProductCard({ producto }) {
       <div className="cf-card__cuerpo">
         <h3 className="cf-card__titulo">{producto.nombre}</h3>
         <p className="cf-card__precio">{pesos(producto.precio)}</p>
+        {producto.variantes?.length > 0 && (
+          <p className="cf-caption" style={{ margin: 0 }}>En grano o molido a tu gusto</p>
+        )}
         <span className={`cf-insignia${agotado ? " cf-insignia--agotado" : ""}`}>
           {agotado ? "Agotado" : `${producto.stock} disponibles`}
         </span>

@@ -7,8 +7,12 @@ import { RUTAS } from "./formato";
 
 /** Campos del pedido que necesitan las pantallas de pago. */
 export const CAMPOS_PEDIDO = `
-  id fecha estado total referencia piezas
-  items { cantidad precioUnit subtotal producto { id nombre } }
+  id fecha estado subtotal costoEnvio total referencia piezas suscripcionId
+  items { productoId nombre variante cantidad precioUnit subtotal }
+  entrega {
+    tipo nombre telefono calle numero colonia ciudad estado cp referencias
+    paqueteria descripcion dias costo modo guia rastreoUrl
+  }
   pago {
     metodo metodoNombre estado modo enLinea referencia pagoId detalle fechaPago
     instrucciones { etiqueta valor }

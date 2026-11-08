@@ -1,0 +1,145 @@
+# =========================================================
+# CI/CD de Frecuente
+#
+# En cada push y pull request:
+#   1. Backend:  instala, analiza calidad (ruff), corre las pruebas (pytest)
+#                contra PostgreSQL y MongoDB reales levantados aquí mismo.
+#   2. Frontend: instala, analiza calidad (ESLint), corre las pruebas
+#                (Vitest) y genera el build de producción de Astro.
+# Solo en main y si TODO lo anterior pasó:
+#   3. Despliegue: backend en Render y frontend en Netlify.
+#
+# Secretos y variables (Settings → Secrets and variables → Actions):
+#   secrets.RENDER_DEPLOY_HOOK_URL   Render → servicio → Settings → Deploy Hook
+#   secrets.NETLIFY_BUILD_HOOK_URL   Netlify → Site → Build & deploy → Build hooks
+#   vars.PUBLIC_API_URL              https://<backend>.onrender.com/graphql
+# Si no están, el paso lo dice y no falla: Render y Netlify también pueden
+# desplegar solos desde GitHub (en Render: Auto-Deploy → "After CI checks pass").
+# =========================================================
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend · calidad y pruebas
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: back
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: frecuente_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      mongo:
+        image: mongo:7
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/frecuente_test
+      MONGO_URI: mongodb://localhost:27017
+      TZ: America/Mexico_City
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: back/requirements*.txt
+
+      - name: Instalar dependencias
+        run: pip install -r requirements-dev.txt
+
+      - name: Análisis de calidad (ruff)
+        run: ruff check . --output-format=github
+
+      - name: Pruebas automatizadas (pytest)
+        run: pytest -q
+
+      - name: El backend arranca con las dos bases
+        run: |
+          python -c "import main; print('Backend listo:', main.app.title, main.app.version)"
+
+  frontend:
+    name: Frontend · calidad, pruebas y build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: front
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: front/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Análisis de calidad (ESLint)
+        run: npm run lint
+
+      - name: Pruebas automatizadas (Vitest)
+        run: npm test
+
+      - name: Build de producción (Astro)
+        run: npm run build
+        env:
+          PUBLIC_API_URL: ${{ vars.PUBLIC_API_URL || 'https://frecuente-api.onrender.com/graphql' }}
+
+      - name: Guardar el build
+        uses: actions/upload-artifact@v4
+        with:
+          name: front-dist
+          path: front/dist
+          retention-days: 7
+
+  deploy:
+    name: Despliegue (Render + Netlify)
+    needs: [backend, frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Backend en Render
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -n "$HOOK" ]; then
+            curl -fsS -X POST "$HOOK" > /dev/null
+            echo "Render: despliegue del backend iniciado"
+          else
+            echo "::notice::Sin RENDER_DEPLOY_HOOK_URL. Render despliega solo con Auto-Deploy 'After CI checks pass'."
+          fi
+
+      - name: Frontend en Netlify
+        env:
+          HOOK: ${{ secrets.NETLIFY_BUILD_HOOK_URL }}
+        run: |
+          if [ -n "$HOOK" ]; then
+            curl -fsS -X POST -d '{}' "$HOOK" > /dev/null
+            echo "Netlify: despliegue del front iniciado"
+          else
+            echo "::notice::Sin NETLIFY_BUILD_HOOK_URL. Netlify despliega solo desde su integración con GitHub."
+          fi

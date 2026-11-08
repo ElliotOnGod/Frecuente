@@ -1,4 +1,4 @@
-# Frecuente — e-commerce (avance 4: backoffice completo en vivo con GraphQL Subscriptions + membresías)
+# Frecuente — e-commerce de café de especialidad (Producto Integrador)
 
 **Equipo:**
 
@@ -19,15 +19,41 @@ componentes) y **P6** (backend GraphQL, UML de entidades), con la identidad
 visual del **Manual de Identidad Digital — Café Frecuente v1.0**
 (`front/src/styles/theme.css`, sin modificar).
 
+**Producto Integrador:** la documentación de los entregables (propuesta, FODA,
+análisis de mercado, SFW, mapas, diseño y documentación técnica) está en
+[`docs/`](docs/README.md), con una tabla de cómo se cumple cada requisito.
+
+| Requisito | Implementación |
+|---|---|
+| Astro + React | Rutas por archivo con islas de React (`front/`) |
+| PostgreSQL + MongoDB | Persistencia políglota: transaccional en Postgres, catálogo y membresías en Mongo |
+| GraphQL + MCP | `/graphql` para el front y `/mcp` para agentes de IA |
+| Mercado Pago + PayPal | Checkout Pro y Orders v2 (simulado o sandbox) |
+| 5+ APIs de terceros | Mercado Pago, PayPal, Envia.com, Envia Geocodes, Brevo, OpenFreeMap |
+| CI/CD | GitHub Actions: lint, pruebas, build y despliegue (`.github/workflows/`) |
+| Nube | Render (backend), Netlify (front), Neon (PostgreSQL), MongoDB Atlas |
+
 ---
 
 ## Cómo correrlo
 
 Se levantan **dos procesos**: el backend en el puerto 8000 y el front (Astro) en el 4321.
 
-### 1. Base de datos (MongoDB)
+### 1. Bases de datos (PostgreSQL y MongoDB)
 
-Necesitas un MongoDB corriendo. Tienes dos opciones:
+El backend usa **dos bases**: PostgreSQL para usuarios, pedidos, pagos,
+envíos, recompras y correos, y MongoDB para el catálogo, las fotos y las
+membresías (ver [docs/tecnica.md](docs/tecnica.md#persistencia-políglota-por-qué-dos-bases)).
+
+**PostgreSQL** (elige una):
+
+- **En la nube (recomendado):** crea un proyecto gratis en [Neon](https://neon.tech),
+  copia la *Connection string* y ponla en `back/.env` como `DATABASE_URL`.
+- **Local:** instala PostgreSQL (`winget install PostgreSQL.PostgreSQL.17`),
+  crea la base `frecuente` y usa
+  `DATABASE_URL=postgresql://postgres:TU_CONTRASEÑA@localhost:5432/frecuente`.
+
+**MongoDB** (elige una):
 
 - **Local:** instala MongoDB Community Server como servicio. En Windows, desde
   una PowerShell como administrador: `winget install MongoDB.Server` (y,
@@ -35,20 +61,31 @@ Necesitas un MongoDB corriendo. Tienes dos opciones:
   Revisa que esté corriendo con `Get-Service MongoDB` (debe decir `Running`).
   Queda en `mongodb://localhost:27017` y no hay que configurar nada más.
 - **En la nube:** crea un clúster gratis en MongoDB Atlas, copia su cadena de
-  conexión y ponla en `back/.env` (ver abajo).
+  conexión y ponla en `back/.env` como `MONGO_URI`.
 
-No hace falta crear nada a mano: el backend crea la base `frecuente`, sus
-colecciones, validadores e índices la primera vez que arranca, y carga
-`datos_ejemplo.json`.
+No hace falta crear tablas ni colecciones a mano: al arrancar, el backend
+aplica las migraciones de `back/sql/`, crea las colecciones con sus
+validadores e índices y carga `datos_ejemplo.json`. **Si tu MongoDB es de una
+entrega anterior**, copia sus usuarios y pedidos a PostgreSQL conservando los
+ids (verás `PostgreSQL: se migraron N usuarios y M pedidos desde MongoDB`).
 
-### 2. Backend (FastAPI + Strawberry + MongoDB)
+### 2. Backend (FastAPI + Strawberry + PostgreSQL + MongoDB)
 
 ```bash
 cd back
 python -m venv .venv
 source .venv/bin/activate          # Windows (PowerShell): .\.venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # incluye pytest y ruff
+copy .env.example .env                # (macOS/Linux: cp) y llena DATABASE_URL
 uvicorn main:app --reload --port 8000
+```
+
+Pruebas y análisis de calidad (los mismos que corre GitHub Actions):
+
+```bash
+cd back
+ruff check .
+pytest            # usa las bases *_test: pon DATABASE_URL apuntando a una base de pruebas
 ```
 
 > El zip **no trae** `back/.venv` ni `front/node_modules`: se crean en cada
@@ -58,11 +95,11 @@ uvicorn main:app --reload --port 8000
 > *"SyntaxError: Invalid or unexpected token env.mjs"*). En Windows:
 > `Remove-Item -Recurse -Force .venv` y `Remove-Item -Recurse -Force node_modules`.
 
-Si tu MongoDB no está en `localhost:27017` (por ejemplo, si usas Atlas),
-copia `.env.example` a `.env` y cambia `MONGO_URI`.
+Todas las variables están explicadas en `back/.env.example` (bases de datos,
+pagos, Envia.com, Brevo, CORS y la clave del cron).
 
-La primera vez verás `Base 'frecuente' creada en MongoDB desde
-datos_ejemplo.json`, con 4 categorías, 9 productos, cuentas de prueba y
+La primera vez verás `Catálogo 'frecuente' creado en MongoDB` y
+`PostgreSQL: se cargaron los usuarios y pedidos de ejemplo`, con 4 categorías, 9 productos, cuentas de prueba y
 **36 pedidos de ejemplo** repartidos en los últimos 30 días (para que el
 panel de administración tenga gráficas desde el primer arranque):
 
@@ -170,15 +207,24 @@ y `npm run preview` para revisarla.
 ```
 frecuente/
 ├── datos_ejemplo.json      Datos iniciales (categorías, productos, cuentas de prueba)
+├── .github/workflows/      CI/CD (ci.yml) y recompras diarias (recompras.yml)
 ├── back/
-│   ├── main.py             FastAPI, CORS y router de GraphQL
-│   ├── schema.py           Tipos, Query y Mutation (Strawberry)
-│   ├── database.py         Conexión a MongoDB (PyMongo), validadores e init_db()
+│   ├── main.py             FastAPI, CORS, GraphQL, MCP, cron y salud
+│   ├── schema.py           Tipos, Query, Mutation y Subscription (Strawberry)
+│   ├── relacional.py       PostgreSQL: pool, migraciones, pedidos, pagos, envíos, recompras
+│   ├── sql/                Migraciones de PostgreSQL (001_inicial.sql)
+│   ├── envios.py           Envia.com: código postal, cotización firmada, guía y rastreo
+│   ├── correos.py          Brevo: correos automáticos y su bitácora
+│   ├── servidor_mcp.py     Servidor MCP para agentes de IA
+│   ├── tests/              Pruebas automatizadas (pytest)
+│   ├── ruff.toml           Reglas del análisis de calidad
+│   ├── database.py         MongoDB (catálogo y membresías), validadores e init_db()
 │   ├── auth.py             Hash de contraseñas (PBKDF2) y tokens de sesión (JWT)
 │   ├── pagos.py            Métodos de cobro: Mercado Pago, PayPal, transferencia, efectivo
 │   ├── eventos.py          Pub/sub en memoria que alimenta las Subscriptions (tiempo real)
 │   ├── .env.example        Datos de conexión (copiar a .env)
-│   └── requirements.txt
+│   ├── requirements.txt
+│   └── requirements-dev.txt  + pytest, httpx y ruff
 ├── front/                  Astro
 │   ├── astro.config.mjs    Integración de React
 │   ├── public/             favicon y archivos estáticos
@@ -187,6 +233,7 @@ frecuente/
 │       ├── layouts/AdminLayout.astro   BaseLayout + menú lateral + conexión en vivo
 │       ├── pages/                      Una página por vista (rutas reales)
 │       │   ├── index.astro             /
+│       │   ├── tienda.astro            /tienda (buscador y filtros por método)
 │       │   ├── categoria.astro         /categoria?id=N
 │       │   ├── carrito.astro           /carrito
 │       │   ├── checkout.astro          /checkout
@@ -198,7 +245,9 @@ frecuente/
 │       │   ├── admin/productos.astro   /admin/productos (inventario y altas/bajas)
 │       │   ├── admin/caja.astro        /admin/caja (validar código y registrar canje)
 │       │   ├── admin/membresias.astro  /admin/membresias (miembros y planes)
-│       │   ├── admin/clientes.astro    /admin/clientes (compras y membresía por cliente)
+│       │   ├── admin/clientes.astro    /admin/clientes (compras, membresía, rol y activación)
+│       │   ├── admin/recompras.astro   /admin/recompras (suscripciones de recompra)
+│       │   ├── admin/integraciones.astro /admin/integraciones (APIs y correos enviados)
 │       │   ├── membresias.astro        /membresias (planes y contratación)
 │       │   ├── mi-membresia.astro      /mi-membresia (código del día en vivo, canjes)
 │       │   ├── login.astro             /login?siguiente=/ruta
@@ -214,13 +263,16 @@ frecuente/
 │       │                               OrderSuccess, CartButton, Skeleton,
 │       │                               LoginForm, RegistroForm, SessionMenu,
 │       │                               Cuenta, Insignia, PasarelaSimulada,
-│       │                               ResultadoPago, Planes, MiMembresia, MapaLocal, Foto
+│       │                               ResultadoPago, Planes, MiMembresia, MapaLocal, Foto,
+│       │                               Tienda, EntregaForm, EntregaPedido, MisRecompras
 │       │                               admin/: SoloAdmin, AdminResumen,
 │       │                               AdminPedidos, AdminProductos, Graficas,
 │       │                               AvisosEnVivo, AdminCaja, AdminMembresias,
-│       │                               AdminClientes
+│       │                               AdminClientes, AdminRecompras, AdminIntegraciones
 │       ├── store/useStore.js           Zustand: sesión, carrito, pedido y modal
 │       ├── store/enVivo.js             Zustand: avisos en vivo del backoffice
+│       ├── lib/carrito.js              Reglas del carrito con variantes (funciones puras + pruebas)
+│       ├── lib/envios.js               Código postal, cotización y datos de entrega
 │       ├── lib/graphql.js              Cliente GraphQL sobre fetch
 │       ├── lib/formato.js              Iconos, formato de pesos, rutas y estados
 │       ├── lib/pagos.js                Consultas y acciones de cobro compartidas
@@ -233,8 +285,8 @@ frecuente/
 │       ├── hooks/useRecargaEnVivo.js   Recarga una consulta cuando llega un aviso
 │       ├── hooks/usePedidoPendiente.js Pedido sin pagar del carrito (lo sincroniza con el servidor)
 │       └── styles/                     theme.css (manual) + global.css
-└── docs/                   UML de componentes (Astro + islas) y de entidades
-                            (colecciones de MongoDB), en SVG
+└── docs/                   Entregables del PI (propuesta, FODA, mercado, SFW,
+                            mapas, diseño, documentación técnica) y UML en SVG
 ```
 
 ## Arquitectura: Astro con islas
@@ -509,12 +561,12 @@ Un solo endpoint: `POST /graphql` (y `WS /graphql` para las Subscriptions).
 
 | | Operación | Acceso |
 |---|---|---|
-| Query | `categorias`, `categoria(id)`, `productos(categoriaId)`, `producto(id)`, `metodosPago` | Público |
-| Query | `yo`, `misPedidos`, `pedido(id)` | Con sesión (un cliente solo ve sus pedidos) |
-| Query | `resumenAdmin(dias)`, `pedidosAdmin(estado, metodo, buscar, limite, salto)` | Solo admin |
+| Query | `categorias`, `categoria(id)`, `productos(categoriaId, metodo, buscar)`, `producto(id)`, `metodosPreparacion`, `metodosPago`, `buscarCodigoPostal(cp)`, `cotizarEnvio(input)` | Público |
+| Query | `yo`, `misPedidos`, `pedido(id)`, `rastrearPedido(id)`, `misSuscripciones` | Con sesión (un cliente solo ve lo suyo) |
+| Query | `resumenAdmin(dias)`, `pedidosAdmin(estado, metodo, buscar, limite, salto)`, `suscripcionesAdmin`, `correosAdmin`, `integraciones` | Solo admin |
 | Mutation | `registrarUsuario`, `iniciarSesion` | Público |
-| Mutation | `registrarPedido`, `iniciarPago`, `confirmarPago`, `cancelarMiPedido` | Con sesión |
-| Mutation | `crearProducto`, `actualizarProducto`, `eliminarProducto`, `subirImagen`, `cambiarEstadoPedido`, `marcarReembolsado` | Solo admin |
+| Mutation | `registrarPedido` (con `entrega` y `recompraCadaDias`), `iniciarPago`, `confirmarPago`, `cancelarMiPedido`, `cambiarMiSuscripcion` | Con sesión |
+| Mutation | `crearProducto`, `actualizarProducto`, `eliminarProducto`, `subirImagen`, `cambiarEstadoPedido`, `generarGuia`, `marcarReembolsado`, `procesarRecompras`, `cambiarRolUsuario`, `cambiarActivoUsuario` | Solo admin |
 | Query | `planes` | Público (`incluirInactivos` solo admin) |
 | Query | `miMembresia`, `misMembresias`, `membresia(id)` | Con sesión |
 | Query | `resumenMembresias`, `membresiasAdmin(...)`, `membresiaPorCodigo(codigo)`, `canjesHoy`, `clientesAdmin(...)` | Solo admin |
@@ -523,7 +575,7 @@ Un solo endpoint: `POST /graphql` (y `WS /graphql` para las Subscriptions).
 | Subscription | `eventosAdmin` | Solo admin |
 | Subscription | `seguirPedido(id)`, `seguirMembresia(id)` | Dueño o admin |
 
-Además, `GET /imagenes/<id>` sirve las fotos subidas y `POST /webhooks/mercadopago` recibe los avisos de Mercado Pago (opcional).
+Además, `GET /imagenes/<id>` sirve las fotos subidas, `POST /webhooks/mercadopago` recibe los avisos de Mercado Pago (opcional), `POST /mcp` es el servidor MCP, `POST /tareas/recompras` genera las recompras (pide `X-Cron-Secret`) y `GET /salud` revisa las dos bases.
 
 Para probar las operaciones con sesión en GraphiQL, primero corre
 `iniciarSesion`, copia el `token` y agrégalo en la pestaña *Headers*:
@@ -533,50 +585,114 @@ Ejemplo:
 
 ```graphql
 mutation {
-  registrarPedido(input: { items: [{ productoId: 1, cantidad: 2 }], metodoPago: "transferencia" }) {
-    id total estado referencia
-    items { cantidad precioUnit subtotal producto { nombre } }
+  registrarPedido(input: {
+    items: [{ productoId: 1, cantidad: 2, variante: "Molido para espresso" }]
+    metodoPago: "transferencia"
+    entrega: { tipo: "recoger" }
+  }) {
+    id subtotal costoEnvio total estado referencia
+    items { nombre variante cantidad precioUnit subtotal }
     pago { metodoNombre estado instrucciones { etiqueta valor } }
   }
 }
 ```
 
-`registrarPedido` es el checkout: valida stock, calcula el total con el precio
-vigente, descuenta stock y guarda el pedido. El descuento usa una
+`registrarPedido` es el checkout: valida stock y variante, calcula el total con
+el precio vigente más el envío firmado, descuenta stock en MongoDB y guarda el
+pedido en PostgreSQL en una sola transacción (pedido, renglones, pago, envío y,
+si se pidió, la suscripción de recompra). El descuento usa una
 actualización condicional atómica (`{stock: {$gte: cantidad}}` + `$inc`), así
 dos compras simultáneas no venden el mismo stock; si algún producto falla, se
 regresa lo que ya se había descontado. `eliminarProducto` no deja borrar un
 producto que ya aparece en pedidos.
 
-### Base de datos (MongoDB)
+### Bases de datos
+
+**PostgreSQL** (`back/sql/001_inicial.sql`): `usuarios`, `pedidos`,
+`pedido_items`, `pagos` (1 a 1 con el pedido), `envios`, `suscripciones`,
+`suscripcion_items` y `correos`, con llaves foráneas, `CHECK` (estados,
+montos, CP de 5 dígitos, `total = subtotal + envio`), `UNIQUE` en el correo e
+índices para el panel. El renglón del pedido guarda el **nombre, la variante y
+el precio** con los que se vendió.
+
+**MongoDB:**
 
 | Colección | Documento |
 |---|---|
 | `categorias` | `{ _id, nombre, descripcion, imagen_url }` |
-| `productos` | `{ _id, nombre, descripcion, precio, stock, imagen_url, imagenes: [..], categoria_id }` |
+| `productos` | `{ _id, nombre, descripcion, precio, stock, imagen_url, imagenes: [..], categoria_id, variante_nombre, variantes: [..], metodos: [..], peso_kg }` |
 | `imagenes` | `{ _id: "<hex>", tipo, datos (binario), bytes, creada, admin_id }` — fotos subidas desde el panel |
-| `usuarios` | `{ _id, nombre, email, telefono, rol, password_hash, creado }` |
-| `pedidos` | `{ _id, usuario_id, fecha, estado, total, items: [ { producto_id, cantidad, precio_unit } ], pago: { metodo, estado, modo, referencia, proveedor_id, pago_id, detalle, intentos, fecha_pago, actualizado } }` |
 | `planes` | `{ _id, nombre, descripcion, precio, incluye: [..], opciones: [..], activo, orden }` |
 | `membresias` | `{ _id, usuario_id, plan_id, estado, precio, creada, inicio, fin, pago: {…}, canjes: [ { dia, fecha, opcion, nota, admin_id } ] }` |
 | `contadores` | `{ _id: "<colección>", valor }` — ids consecutivos |
 
 Decisiones de modelado:
 
-- **Items embebidos en el pedido.** Siempre se leen junto con su pedido y no
-  existen solos, así que van dentro del mismo documento (en SQL era la tabla
-  `pedido_item`). Guardan `precio_unit` para que el pedido conserve el precio
-  con el que se vendió aunque el producto cambie después.
-- **Categoría y usuario por referencia** (`categoria_id`, `usuario_id`): un
-  producto se consulta por separado y un usuario acumula muchos pedidos.
-- **Ids enteros** con la colección `contadores` (como `AUTO_INCREMENT`), para
-  que la API y el front sigan usando 1, 2, 3… en lugar de `ObjectId`.
-- **Pago embebido en el pedido.** Un pedido tiene un solo cobro y siempre se
-  muestra con él. Es opcional en el validador para que los pedidos de la
-  entrega anterior sigan siendo válidos (en la API salen con `pago: null`).
-- **Validación `$jsonSchema`** en cada colección (campos obligatorios, tipos,
-  precio y stock ≥ 0, estados permitidos) e **índices** en `categoria_id`,
-  `usuario_id`, `items.producto_id` y `email` (único).
+- **Lo transaccional en PostgreSQL.** Un pedido toca cuatro tablas y debe
+  quedar completo o no quedar; las restricciones de SQL protegen los datos aunque
+  haya un error en el código. Los cambios de un pedido bloquean su renglón
+  (`SELECT … FOR UPDATE`) para que dos avisos de pago no choquen.
+- **El catálogo en MongoDB.** Cada producto tiene campos distintos (variantes,
+  galería, métodos) y se lee completo; el stock se descuenta con una
+  actualización condicional atómica (`{stock: {$gte: n}}` + `$inc`).
+- **Entre las dos bases** no hay transacción: si el pedido falla en Postgres,
+  el stock descontado en Mongo se regresa (compensación).
+- **Variantes sin duplicar productos:** la molienda comparte precio y stock y
+  se guarda en el renglón del pedido.
+- **Validación `$jsonSchema`** en cada colección e **índices** en
+  `categoria_id` y `metodos`.
+
+## Envíos a domicilio (Envia.com)
+
+- Al escribir el código postal, `buscarCodigoPostal` llena estado, ciudad y
+  colonias (Envia Geocodes, API pública).
+- `cotizarEnvio` pide precios a Estafeta, FedEx y DHL (`/ship/rate/`) con el
+  peso real del carrito. Cada opción viaja con una **firma HMAC**; al
+  registrar el pedido se verifica que no la hayan alterado, que no haya
+  expirado (30 min) y que sea del mismo CP y peso.
+- Al marcar el pedido como enviado se genera la guía (`/ship/generate/`) y el
+  cliente puede rastrearlo (`/ship/generaltrack/`).
+- Sin `ENVIA_TOKEN` trabaja en modo simulado (tabla de precios por zona y guías `SIM…`).
+
+## Correos automáticos (Brevo)
+
+Bienvenida, aviso de pedido nuevo a la tienda, pago confirmado, pedido enviado
+(con guía), membresía activada y recompra lista. Se mandan en segundo plano y
+cada uno queda en la tabla `correos` (el admin los ve en **Integraciones**).
+Sin `BREVO_API_KEY` se anotan como "simulado".
+
+## Recompra automática
+
+En el checkout, "Repetir este pedido" cada 15, 30 o 60 días crea una
+suscripción. El backend revisa cada hora (y un cron diario de GitHub Actions
+llama a `POST /tareas/recompras`) qué suscripciones ya vencieron, genera el
+pedido con los mismos productos y entrega, y le manda al cliente el enlace para
+pagarlo. No se guardan tarjetas. `FOR UPDATE SKIP LOCKED` evita pedidos dobles.
+El cliente pausa, cambia la frecuencia o cancela desde **Mi cuenta**.
+
+## Servidor MCP (agentes de IA)
+
+`POST /mcp` (Streamable HTTP). Herramientas públicas: `buscar_productos`,
+`ver_producto`, `listar_categorias`, `metodos_de_preparacion`, `cotizar_envio`.
+Con `Authorization: Bearer <token de admin>`: `estado_de_pedido`,
+`resumen_de_ventas`, `productos_con_poco_stock`, `pedidos_por_cobrar`.
+Para probarlo: `npx @modelcontextprotocol/inspector` y la URL
+`http://localhost:8000/mcp`.
+
+## CI/CD
+
+`.github/workflows/ci.yml` corre en cada push y pull request:
+
+1. **Backend:** `ruff check .` y `pytest` (42 pruebas) contra PostgreSQL y
+   MongoDB reales levantados por el workflow.
+2. **Frontend:** `npm run lint` (ESLint), `npm test` (Vitest) y `npm run build`.
+3. **Despliegue** (solo en `main` y si todo pasó): deploy hook de Render y
+   build hook de Netlify (`RENDER_DEPLOY_HOOK_URL`, `NETLIFY_BUILD_HOOK_URL` en
+   GitHub Secrets). Sin ellos, Render puede desplegar solo con
+   *Auto-Deploy → After CI checks pass*.
+
+`.github/workflows/recompras.yml` corre a diario las recompras (necesita
+`vars.BACKEND_URL` y `secrets.CRON_SECRET`).
 
 ## Fotos de productos
 
@@ -637,8 +753,8 @@ un hook propio `useSuscripcion`), y el front corre
 sobre **Astro** con arquitectura de islas y rutas por archivo, y hay inicio
 de sesión con JWT y formularios controlados con validación.
 
-## Pendiente para la siguiente entrega
+## Pendiente para la siguiente etapa
 
-Rediseño visual más profesional, renovación automática de membresías
-(cobro recurrente), dirección de envío en el checkout y fotos propias del
-local (por ahora son fotos libres de Unsplash).
+Cobro recurrente automático con tarjeta guardada, facturación electrónica
+(CFDI), cupones de descuento y fotografía propia del local (por ahora son
+fotos libres de Unsplash).

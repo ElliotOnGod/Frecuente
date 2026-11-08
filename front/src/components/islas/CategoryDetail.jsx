@@ -8,7 +8,7 @@ const QUERY_CATEGORIA = `
   query Categoria($id: Int!) {
     categoria(id: $id) {
       id nombre descripcion
-      productos { id nombre precio stock categoriaId imagenUrl }
+      productos { id nombre precio stock categoriaId imagenUrl variantes }
     }
   }
 `;

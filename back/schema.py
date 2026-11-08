@@ -1,17 +1,23 @@
 """
 schema.py — esquema GraphQL (Strawberry) del e-commerce Frecuente.
 
-Tipos: Categoria, Producto, Usuario, Pedido, PedidoItem, Pago, MetodoPago,
-       InicioPago, ResumenAdmin (+ sus series), PaginaPedidos,
+Tipos: Categoria, Producto, Usuario, Pedido, PedidoItem, Pago, Entrega, MetodoPago,
+       InicioPago, ResumenAdmin (+ sus series), PaginaPedidos, OpcionEnvio,
+       InfoCodigoPostal, Rastreo, Suscripcion, CorreoEnviado, Integracion,
        Plan, Membresia, Canje, ResumenMembresias, ClienteAdmin, EventoTiempoReal
-Query: categorias, categoria, productos, producto, metodosPago, planes,
-       yo, misPedidos, pedido, miMembresia, misMembresias, membresia,
+Query: categorias, categoria, productos(categoriaId, metodo, buscar), producto,
+       metodosPreparacion, metodosPago, buscarCodigoPostal, cotizarEnvio, planes,
+       yo, misPedidos, pedido, rastrearPedido, misSuscripciones,
+       miMembresia, misMembresias, membresia,
        resumenAdmin, pedidosAdmin, resumenMembresias, membresiasAdmin,
-       membresiaPorCodigo, canjesHoy, clientesAdmin                (admin)
+       membresiaPorCodigo, canjesHoy, clientesAdmin, suscripcionesAdmin,
+       correosAdmin, integraciones                                  (admin)
 Mutation: registrarUsuario, iniciarSesion,
           registrarPedido, iniciarPago, confirmarPago, cancelarMiPedido,
-          crearProducto, actualizarProducto, eliminarProducto,      (admin)
-          cambiarEstadoPedido, marcarReembolsado,                   (admin)
+          cambiarMiSuscripcion,
+          crearProducto, actualizarProducto, eliminarProducto, subirImagen, (admin)
+          cambiarEstadoPedido, generarGuia, marcarReembolsado,      (admin)
+          procesarRecompras, cambiarRolUsuario, cambiarActivoUsuario, (admin)
           contratarMembresia, iniciarPagoMembresia, confirmarPagoMembresia,
           cancelarMiMembresia,
           confirmarPagoMembresiaManual, cancelarMembresia, canjearMembresia,
@@ -19,10 +25,15 @@ Mutation: registrarUsuario, iniciarSesion,
 Subscription (tiempo real, WebSocket): eventosAdmin (admin),
           seguirPedido, seguirMembresia (dueño o admin)
 
+Dónde vive cada dato:
+  - MongoDB (database.db): categorías, productos, fotos, planes, membresías.
+  - PostgreSQL (relacional.py): usuarios, pedidos, pagos, envíos,
+    suscripciones de recompra y bitácora de correos.
+
 Sesión: el front manda  Authorization: Bearer <token>  (ver auth.py).
-  - Catálogo (categorías, productos) y metodosPago: público.
+  - Catálogo, metodosPago, buscarCodigoPostal y cotizarEnvio: público.
   - yo, misPedidos, pedido, registrarPedido, iniciarPago, confirmarPago,
-    cancelarMiPedido: requieren sesión (cada cliente solo toca lo suyo).
+    cancelarMiPedido, suscripciones: requieren sesión (cada cliente solo toca lo suyo).
   - Todo lo marcado (admin): requiere sesión con rol "admin".
 
 Equipo: Jehu Uribe Bermudez (23100139),
@@ -37,16 +48,19 @@ import hashlib
 import hmac
 import re
 import secrets
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import AsyncGenerator, List, Optional
 
 import strawberry
 from bson.binary import Binary
 from pymongo import ASCENDING, DESCENDING, ReturnDocument
-from pymongo.errors import DuplicateKeyError, WriteError
+from pymongo.errors import WriteError
 from strawberry.types import Info
 
+import correos
+import envios
 import eventos
+import relacional
 from auth import (
     JWT_SECRET,
     SesionInvalida,
@@ -57,7 +71,15 @@ from auth import (
     usuario_id_de_token,
     verificar_password,
 )
-from database import DIAS_MEMBRESIA, ESTADOS_PEDIDO, MAX_IMAGENES, a_dict, db, siguiente_id
+from database import (
+    DIAS_MEMBRESIA,
+    ESTADOS_PEDIDO,
+    MAX_IMAGENES,
+    METODOS_PREPARACION,
+    a_dict,
+    db,
+    siguiente_id,
+)
 import pagos
 from pagos import METODOS, ErrorPago, modo_de, referencia_de, referencia_membresia
 
@@ -71,6 +93,8 @@ class PedidoItem:
     id: int
     pedido_id: int
     producto_id: int
+    nombre: str           # como se llamaba el producto al comprarlo
+    variante: str         # "Molido para espresso", "" si no aplica
     cantidad: int
     precio_unit: float
 
@@ -93,6 +117,10 @@ class Producto:
     imagen_url: str       # la foto principal (= imagenes[0]); "" si no tiene
     imagenes: List[str]   # galería completa, la principal primero
     categoria_id: int
+    variante_nombre: str  # "Molienda"; "" si el producto no tiene variantes
+    variantes: List[str]  # opciones que elige el cliente (mismo precio y stock)
+    metodos: List[str]    # métodos de preparación (filtro del catálogo)
+    peso_kg: float        # para cotizar el envío
 
     @strawberry.field
     def categoria(self) -> Optional["Categoria"]:
@@ -167,20 +195,59 @@ class MetodoPago:
 
 
 @strawberry.type
+class Entrega:
+    """Cómo llega el pedido: se recoge en el local o va a domicilio (Envia.com)."""
+    tipo: str             # recoger | domicilio
+    nombre: str
+    telefono: str
+    calle: str
+    numero: str
+    colonia: str
+    ciudad: str
+    estado: str           # JA, CX, NL…
+    cp: str
+    referencias: str
+    paqueteria: str
+    servicio: str
+    descripcion: str      # "Estafeta Terrestre"
+    dias: str             # "2-3 días"
+    costo: float
+    modo: str             # simulado | sandbox | manual
+    guia: str             # número de rastreo ("" hasta que se envía)
+    rastreo_url: str
+    etiqueta_url: str
+
+
+def _entrega(e: dict | None) -> Optional[Entrega]:
+    if not e:
+        return None
+    campos = {k: e.get(k) or "" for k in Entrega.__annotations__ if k != "costo"}
+    return Entrega(**campos, costo=float(e.get("costo") or 0))
+
+
+@strawberry.type
 class Pedido:
     id: int
     usuario_id: int
     fecha: str
     estado: str
-    total: float
-    # Los items vienen embebidos en el documento del pedido; se guardan
-    # aquí sin exponerlos tal cual y el campo `items` los convierte.
+    subtotal: float       # productos
+    costo_envio: float
+    total: float          # subtotal + envío
+    suscripcion_id: Optional[int]   # si lo generó una recompra
+    # Los renglones, el pago y el envío vienen ya armados (relacional.py);
+    # se guardan aquí sin exponerlos tal cual y los campos de abajo los convierten.
     items_doc: strawberry.Private[list]
     pago_doc: strawberry.Private[Optional[dict]]
+    entrega_doc: strawberry.Private[Optional[dict]]
 
     @strawberry.field
     def usuario(self) -> Optional[Usuario]:
-        return _usuario(db.usuarios.find_one({"_id": self.usuario_id}))
+        return _usuario(relacional.usuario(self.usuario_id))
+
+    @strawberry.field
+    def entrega(self) -> Optional[Entrega]:
+        return _entrega(self.entrega_doc)
 
     @strawberry.field
     def referencia(self) -> str:
@@ -202,6 +269,8 @@ class Pedido:
                 id=i + 1,
                 pedido_id=self.id,
                 producto_id=it["producto_id"],
+                nombre=it.get("nombre", ""),
+                variante=it.get("variante", ""),
                 cantidad=it["cantidad"],
                 precio_unit=it["precio_unit"],
             )
@@ -250,6 +319,10 @@ def _producto(doc: dict | None) -> Producto | None:
         imagen_url=imagenes[0] if imagenes else "",
         imagenes=imagenes,
         categoria_id=d["categoria_id"],
+        variante_nombre=d.get("variante_nombre", "") if d.get("variantes") else "",
+        variantes=list(d.get("variantes") or []),
+        metodos=list(d.get("metodos") or []),
+        peso_kg=float(d.get("peso_kg") or envios.PESO_DEFECTO_KG),
     )
 
 
@@ -279,17 +352,20 @@ def _usuario(doc: dict | None) -> Usuario | None:
 
 
 def _pedido(doc: dict | None) -> Pedido | None:
-    d = a_dict(doc)
-    if d is None:
+    if doc is None:
         return None
     return Pedido(
-        id=d["id"],
-        usuario_id=d["usuario_id"],
-        fecha=d["fecha"],
-        estado=d["estado"],
-        total=float(d["total"]),
-        items_doc=d.get("items", []),
-        pago_doc=d.get("pago"),
+        id=doc["_id"],
+        usuario_id=doc["usuario_id"],
+        fecha=_fecha_txt(doc["fecha"]) or "",
+        estado=doc["estado"],
+        subtotal=float(doc.get("subtotal", doc["total"])),
+        costo_envio=float(doc.get("envio", 0)),
+        total=float(doc["total"]),
+        suscripcion_id=doc.get("suscripcion_id"),
+        items_doc=doc.get("items", []),
+        pago_doc=doc.get("pago"),
+        entrega_doc=doc.get("entrega"),
     )
 
 
@@ -345,6 +421,7 @@ class ResumenAdmin:
     pedidos_por_reembolsar: int
     clientes_total: int
     clientes_con_compra: int
+    recompras_activas: int
     ventas_por_dia: List[PuntoVenta]
     por_metodo: List[VentaMetodo]
     por_estado: List[ConteoEstado]
@@ -411,7 +488,7 @@ class Membresia:
 
     @strawberry.field
     def usuario(self) -> Optional[Usuario]:
-        return _usuario(db.usuarios.find_one({"_id": self.usuario_id}))
+        return _usuario(relacional.usuario(self.usuario_id))
 
     @strawberry.field
     def pago(self) -> Optional[Pago]:
@@ -496,6 +573,8 @@ class ClienteAdmin:
     nombre: str
     email: str
     telefono: str
+    rol: str
+    activo: bool
     creado: Optional[str]
     pedidos: int
     total_gastado: float
@@ -538,6 +617,136 @@ def _evento(e: dict) -> EventoTiempoReal:
         membresia_id=e.get("membresia_id"),
         monto=e.get("monto"),
     )
+
+
+# ---- catálogo, envíos, recompras e integraciones ----
+
+@strawberry.type
+class MetodoPreparacion:
+    clave: str
+    nombre: str
+
+
+@strawberry.type
+class InfoCodigoPostal:
+    cp: str
+    estado: str           # código de 2 letras (JA)
+    estado_nombre: str
+    ciudad: str
+    colonias: List[str]
+
+
+@strawberry.type
+class OpcionEnvio:
+    """Una cotización. `token` es la firma que se manda al registrar el pedido."""
+    token: str
+    paqueteria: str
+    servicio: str
+    descripcion: str
+    dias: str
+    costo: float
+    modo: str
+
+
+@strawberry.type
+class EventoRastreo:
+    fecha: str
+    descripcion: str
+    lugar: str
+
+
+@strawberry.type
+class Rastreo:
+    guia: str
+    paqueteria: str
+    estado: str
+    rastreo_url: str
+    eventos: List[EventoRastreo]
+
+
+@strawberry.type
+class SuscripcionItem:
+    producto_id: int
+    variante: str
+    cantidad: int
+
+    @strawberry.field
+    def producto(self) -> Optional[Producto]:
+        return _producto(db.productos.find_one({"_id": self.producto_id}))
+
+
+@strawberry.type
+class Suscripcion:
+    """Recompra: el mismo pedido se genera solo cada `cada_dias` días."""
+    id: int
+    usuario_id: int
+    estado: str           # activa | pausada | cancelada
+    cada_dias: int
+    proxima: str          # "2026-12-08"
+    metodo_pago: str
+    creada: str
+    items: List[SuscripcionItem]
+    entrega_doc: strawberry.Private[dict]
+
+    @strawberry.field
+    def entrega(self) -> Optional[Entrega]:
+        return _entrega(self.entrega_doc)
+
+    @strawberry.field
+    def usuario(self) -> Optional[Usuario]:
+        return _usuario(relacional.usuario(self.usuario_id))
+
+    @strawberry.field
+    def pedidos(self) -> List[Pedido]:
+        return [_pedido(d) for d in relacional.pedidos_de_suscripcion(self.id)]
+
+    @strawberry.field
+    def total_estimado(self) -> float:
+        """Con los precios de hoy + el envío elegido."""
+        precios = {
+            p["_id"]: float(p["precio"])
+            for p in db.productos.find({"_id": {"$in": [i.producto_id for i in self.items]}}, {"precio": 1})
+        }
+        productos = sum(precios.get(i.producto_id, 0) * i.cantidad for i in self.items)
+        return round(productos + float(self.entrega_doc.get("costo") or 0), 2)
+
+
+def _suscripcion(doc: dict | None) -> Optional[Suscripcion]:
+    if doc is None:
+        return None
+    return Suscripcion(
+        id=doc["_id"],
+        usuario_id=doc["usuario_id"],
+        estado=doc["estado"],
+        cada_dias=doc["cada_dias"],
+        proxima=doc["proxima"].isoformat(),
+        metodo_pago=doc["metodo_pago"],
+        creada=_fecha_txt(doc["creada"]) or "",
+        items=[SuscripcionItem(**i) for i in doc["items"]],
+        entrega_doc=doc["entrega"] or {},
+    )
+
+
+@strawberry.type
+class CorreoEnviado:
+    id: int
+    destinatario: str
+    asunto: str
+    plantilla: str
+    estado: str           # enviado | simulado | error
+    detalle: str
+    pedido_id: Optional[int]
+    fecha: str
+
+
+@strawberry.type
+class Integracion:
+    """Una API de terceros y en qué modo está (para el panel)."""
+    clave: str
+    nombre: str
+    para_que: str
+    modo: str
+    activa: bool
 
 
 def _plan(doc: dict | None) -> Optional[Plan]:
@@ -603,6 +812,10 @@ class ProductoInput:
     # Galería: la primera es la principal. Si viene, manda sobre imagen_url.
     imagenes: List[str] = strawberry.field(default_factory=list)
     categoria_id: int = 1
+    variante_nombre: str = ""
+    variantes: List[str] = strawberry.field(default_factory=list)
+    metodos: List[str] = strawberry.field(default_factory=list)
+    peso_kg: float = 0.5
 
 
 @strawberry.input
@@ -614,12 +827,41 @@ class ProductoUpdateInput:
     imagen_url: Optional[str] = None
     imagenes: Optional[List[str]] = None
     categoria_id: Optional[int] = None
+    variante_nombre: Optional[str] = None
+    variantes: Optional[List[str]] = None
+    metodos: Optional[List[str]] = None
+    peso_kg: Optional[float] = None
 
 
 @strawberry.input
 class ItemInput:
     producto_id: int
     cantidad: int
+    variante: str = ""
+
+
+@strawberry.input
+class EntregaInput:
+    """recoger: solo `tipo`. domicilio: la dirección + el token de la opción cotizada."""
+    tipo: str = "recoger"
+    nombre: str = ""
+    telefono: str = ""
+    calle: str = ""
+    numero: str = ""
+    colonia: str = ""
+    ciudad: str = ""
+    estado: str = ""
+    cp: str = ""
+    referencias: str = ""
+    opcion_token: str = ""
+
+
+@strawberry.input
+class CotizarEnvioInput:
+    cp: str
+    estado: str
+    ciudad: str = ""
+    items: List[ItemInput] = strawberry.field(default_factory=list)
 
 
 @strawberry.input
@@ -627,6 +869,8 @@ class PedidoInput:
     # Ya no se manda usuario_id: el pedido es del usuario de la sesión
     items: List[ItemInput]
     metodo_pago: str = "mercadopago"
+    entrega: Optional[EntregaInput] = None          # sin entrega = recoger en el local
+    recompra_cada_dias: Optional[int] = None        # 15, 30 o 60: repetir este pedido
 
 
 @strawberry.input
@@ -713,9 +957,12 @@ def usuario_actual(info: Info, requerido: bool = True) -> dict | None:
             raise ValueError("Necesitas iniciar sesión")
         return None
 
-    usuario = db.usuarios.find_one({"_id": usuario_id_de_token(token)})
+    usuario = relacional.usuario(usuario_id_de_token(token))
     if usuario is None:
         raise SesionInvalida("Tu sesión expiró, inicia sesión de nuevo")
+    if not usuario["activo"]:
+        # El admin desactivó la cuenta: su token deja de servir al momento
+        raise SesionInvalida("Tu cuenta está desactivada. Escríbenos si crees que es un error")
     return usuario
 
 
@@ -749,10 +996,7 @@ def _ahora() -> datetime:
 
 def _pedido_propio(usuario: dict, pedido_id: int) -> dict:
     """El pedido si es del usuario (o si es admin); si no, error."""
-    filtro = {"_id": pedido_id}
-    if usuario.get("rol") != "admin":
-        filtro["usuario_id"] = usuario["_id"]
-    pedido = db.pedidos.find_one(filtro)
+    pedido = relacional.pedido(pedido_id, None if usuario.get("rol") == "admin" else usuario["_id"])
     if pedido is None:
         raise ValueError(f"No encontramos el pedido {pedido_id}")
     return pedido
@@ -763,45 +1007,51 @@ def _aplicar_resultado_pago(pedido: dict, resultado: dict) -> dict:
 
     Es idempotente: si el mismo aviso llega dos veces (regreso del cliente
     + webhook) el segundo no cambia nada. Un pago ya aprobado nunca vuelve
-    a 'pendiente' o 'rechazado'."""
+    a 'pendiente' o 'rechazado'. El renglón del pedido se bloquea
+    (SELECT … FOR UPDATE) mientras se decide, así dos avisos simultáneos
+    se atienden uno después del otro."""
     estado_pago = resultado["estado"]
-    cambios = {
-        "pago.estado": estado_pago,
-        "pago.detalle": resultado.get("detalle", "")[:200],
-        "pago.actualizado": _ahora(),
-    }
-    if resultado.get("pago_id"):
-        cambios["pago.pago_id"] = str(resultado["pago_id"])
 
-    filtro = {"_id": pedido["_id"]}
-    if estado_pago in ("pendiente", "rechazado"):
-        filtro["pago.estado"] = {"$nin": PAGO_CERRADO}
-    elif estado_pago == "aprobado":
-        filtro["pago.estado"] = {"$nin": PAGO_CERRADO}
-        cambios["pago.fecha_pago"] = _ahora()
-        if pedido["estado"] == "cancelado":
-            # Pagaron un pedido que ya se había cancelado: hay que regresar el dinero
-            cambios["pago.estado"] = "por_reembolsar"
-        elif pedido["estado"] == "registrado":
-            cambios["estado"] = "pagado"
-
-    resultado_db = db.pedidos.update_one(filtro, {"$set": cambios})
-    if resultado_db.modified_count:
-        textos = {
-            "aprobado": "aprobado",
-            "rechazado": "rechazado",
-            "pendiente": "pendiente",
-            "reembolsado": "reembolsado",
+    def calcular(actual: dict):
+        if actual["pago"]["estado"] in PAGO_CERRADO:
+            return None  # ya estaba cerrado: el aviso repetido no cambia nada
+        cambios_pago = {
+            "estado": estado_pago,
+            "detalle": resultado.get("detalle", "")[:200],
+            "actualizado": _ahora(),
         }
-        eventos.publicar(
-            eventos.PAGO_ACTUALIZADO,
-            f"Pago del pedido #{pedido['_id']} {textos.get(cambios['pago.estado'], cambios['pago.estado'])}"
-            f" ({_dinero(pedido['total'])})",
-            pedido_id=pedido["_id"],
-            usuario_id=pedido["usuario_id"],
-            monto=float(pedido["total"]),
-        )
-    return db.pedidos.find_one({"_id": pedido["_id"]})
+        if resultado.get("pago_id"):
+            cambios_pago["pago_id"] = str(resultado["pago_id"])
+        cambios_pedido = {}
+        if estado_pago == "aprobado":
+            cambios_pago["fecha_pago"] = _ahora()
+            if actual["estado"] == "cancelado":
+                # Pagaron un pedido que ya se había cancelado: hay que regresar el dinero
+                cambios_pago["estado"] = "por_reembolsar"
+            elif actual["estado"] == "registrado":
+                cambios_pedido["estado"] = "pagado"
+        return cambios_pedido, cambios_pago, None
+
+    nuevo = relacional.actualizar_pedido(pedido["_id"], calcular=calcular)
+    if nuevo is None:
+        return relacional.pedido(pedido["_id"])
+
+    eventos.publicar(
+        eventos.PAGO_ACTUALIZADO,
+        f"Pago del pedido #{pedido['_id']} {nuevo['pago']['estado']} ({_dinero(pedido['total'])})",
+        pedido_id=pedido["_id"],
+        usuario_id=pedido["usuario_id"],
+        monto=float(pedido["total"]),
+    )
+    if nuevo["pago"]["estado"] == "aprobado":
+        _avisar_pago_aprobado(nuevo)
+    return nuevo
+
+
+def _avisar_pago_aprobado(pedido: dict) -> None:
+    cliente = relacional.usuario(pedido["usuario_id"])
+    if cliente:
+        correos.pedido_confirmado(pedido, cliente)
 
 
 def _dinero(n: float) -> str:
@@ -820,19 +1070,19 @@ def _avisar_stock_bajo(producto_ids) -> None:
 def _cancelar(pedido: dict) -> dict:
     """Cancela y regresa el stock. La condición en el filtro hace que, si
     dos personas cancelan al mismo tiempo, el stock se regrese una sola vez."""
-    cambios = {"estado": "cancelado"}
-    if pedido.get("pago"):  # los pedidos de la entrega anterior no traen pago
-        cambios["pago.actualizado"] = _ahora()
-        if pedido["pago"].get("estado") == "aprobado":
-            cambios["pago.estado"] = "por_reembolsar"
 
-    doc = db.pedidos.find_one_and_update(
-        {"_id": pedido["_id"], "estado": {"$in": ["registrado", "pagado"]}},
-        {"$set": cambios},
-        return_document=ReturnDocument.AFTER,
-    )
+    def calcular(actual: dict):
+        if actual["estado"] not in ("registrado", "pagado"):
+            return None
+        cambios_pago = {"actualizado": _ahora()}
+        if actual["pago"]["estado"] == "aprobado":
+            cambios_pago["estado"] = "por_reembolsar"
+        return {"estado": "cancelado"}, cambios_pago, None
+
+    doc = relacional.actualizar_pedido(pedido["_id"], calcular=calcular)
     if doc is None:
         raise ValueError("Este pedido ya no se puede cancelar")
+    # El stock vive en MongoDB: se regresa después de cancelar en Postgres
     for it in doc["items"]:
         db.productos.update_one({"_id": it["producto_id"]}, {"$inc": {"stock": it["cantidad"]}})
     eventos.publicar(
@@ -845,11 +1095,14 @@ def _cancelar(pedido: dict) -> dict:
 
 
 def _lineas_con_nombre(pedido: dict) -> list[dict]:
-    nombres = {
-        p["_id"]: p["nombre"]
-        for p in db.productos.find({"_id": {"$in": [i["producto_id"] for i in pedido["items"]]}})
-    }
-    return [{**i, "nombre": nombres.get(i["producto_id"], "Producto")} for i in pedido["items"]]
+    """Renglones para la pasarela; el envío va como un renglón más."""
+    lineas = [
+        {**i, "nombre": f"{i['nombre']} ({i['variante']})" if i.get("variante") else i["nombre"]}
+        for i in pedido["items"]
+    ]
+    if pedido.get("envio"):
+        lineas.append({"producto_id": "envio", "nombre": "Envío a domicilio", "cantidad": 1, "precio_unit": pedido["envio"]})
+    return lineas
 
 
 # =========================================================
@@ -940,7 +1193,9 @@ def _activar_membresia(doc: dict, cambios_pago: dict, detalle: str) -> dict | No
     )
     if nuevo:
         plan = db.planes.find_one({"_id": nuevo["plan_id"]}) or {}
-        usuario = db.usuarios.find_one({"_id": nuevo["usuario_id"]}) or {}
+        usuario = relacional.usuario(nuevo["usuario_id"]) or {}
+        if usuario:
+            correos.membresia_activada(usuario, plan, nuevo)
         eventos.publicar(
             eventos.MEMBRESIA_ACTUALIZADA,
             f"Membresía {plan.get('nombre', '')} activada para {usuario.get('nombre', 'un cliente')}"
@@ -1006,9 +1261,9 @@ def _filtro_membresias(estado, plan_id, buscar) -> dict:
         if numero.isdigit():
             filtro["_id"] = int(numero)
         else:
-            patron = {"$regex": re.escape(texto), "$options": "i"}
-            ids = [u["_id"] for u in db.usuarios.find({"$or": [{"nombre": patron}, {"email": patron}]}, {"_id": 1})]
-            filtro["usuario_id"] = {"$in": ids}
+            # Los usuarios están en PostgreSQL: primero se buscan ahí y con
+            # sus ids se filtran las membresías en MongoDB.
+            filtro["usuario_id"] = {"$in": relacional.ids_que_coinciden(texto)}
     return filtro
 
 
@@ -1058,9 +1313,11 @@ def _resumen_membresias() -> ResumenMembresias:
 
 def _canjes_del_dia(dia: str) -> List[CanjeAdmin]:
     planes = {p["_id"]: p["nombre"] for p in db.planes.find()}
+    membresias = list(db.membresias.find({"canjes.dia": dia}))
+    usuarios = relacional.usuarios_por_ids(m["usuario_id"] for m in membresias)
     filas = []
-    for m in db.membresias.find({"canjes.dia": dia}):
-        usuario = db.usuarios.find_one({"_id": m["usuario_id"]}) or {}
+    for m in membresias:
+        usuario = usuarios.get(m["usuario_id"], {})
         for c in m["canjes"]:
             if c["dia"] == dia:
                 filas.append(
@@ -1076,55 +1333,26 @@ def _canjes_del_dia(dia: str) -> List[CanjeAdmin]:
     return sorted(filas, key=lambda f: f.fecha, reverse=True)
 
 
-def _clientes_admin(buscar, limite, salto) -> PaginaClientes:
-    filtro: dict = {"rol": "cliente"}
-    if buscar and buscar.strip():
-        patron = {"$regex": re.escape(buscar.strip()), "$options": "i"}
-        filtro["$or"] = [{"nombre": patron}, {"email": patron}, {"telefono": patron}]
-    usuarios = list(db.usuarios.find(filtro))
-    ids = [u["_id"] for u in usuarios]
-
-    # Agregación: pedidos y gasto por cliente (solo ventas pagadas)
-    stats = {
-        r["_id"]: r
-        for r in db.pedidos.aggregate(
-            [
-                {"$match": {"usuario_id": {"$in": ids}}},
-                {
-                    "$group": {
-                        "_id": "$usuario_id",
-                        "pedidos": {"$sum": 1},
-                        "ultima": {"$max": "$fecha"},
-                    }
-                },
-            ]
-        )
-    }
-    gastado: dict[int, float] = {}
-    for p in db.pedidos.find(
-        {"usuario_id": {"$in": ids}, "pago.estado": "aprobado", "estado": {"$ne": "cancelado"}},
-        {"usuario_id": 1, "total": 1},
-    ):
-        gastado[p["usuario_id"]] = gastado.get(p["usuario_id"], 0.0) + float(p["total"])
-
+def _clientes_admin(buscar, limite, salto, incluir_admins=False) -> PaginaClientes:
+    # Estadísticas de compra con un solo SELECT … GROUP BY en PostgreSQL
     filas = []
-    for u in usuarios:
-        vigente = _membresia_vigente(u["_id"])
-        st = stats.get(u["_id"], {})
+    for u in relacional.clientes_con_estadisticas(buscar, incluir_admins):
+        vigente = _membresia_vigente(u["id"])
         filas.append(
             ClienteAdmin(
-                id=u["_id"],
+                id=u["id"],
                 nombre=u["nombre"],
                 email=u["email"],
-                telefono=u.get("telefono", ""),
-                creado=_fecha_txt(u.get("creado")),
-                pedidos=st.get("pedidos", 0),
-                total_gastado=round(gastado.get(u["_id"], 0.0), 2),
-                ultima_compra=_fecha_txt(st.get("ultima")),
+                telefono=u["telefono"],
+                rol=u["rol"],
+                activo=u["activo"],
+                creado=_fecha_txt(u["creado"]),
+                pedidos=u["pedidos"],
+                total_gastado=round(u["gastado"], 2),
+                ultima_compra=_fecha_txt(u["ultima"]),
                 membresia_id=vigente["_id"] if vigente else None,
             )
         )
-    filas.sort(key=lambda c: (-c.total_gastado, c.nombre))
     limite = max(1, min(limite, 100))
     return PaginaClientes(total=len(filas), clientes=filas[max(0, salto): max(0, salto) + limite])
 
@@ -1136,114 +1364,42 @@ def _clientes_admin(buscar, limite, salto) -> PaginaClientes:
 STOCK_BAJO = 10
 
 
-def _es_venta(p: dict) -> bool:
-    """Cuenta como venta: pago aprobado y pedido no cancelado."""
-    return (p.get("pago") or {}).get("estado") == "aprobado" and p["estado"] != "cancelado"
-
-
 def _resumen_admin(dias: int) -> ResumenAdmin:
+    """Las ventas salen de PostgreSQL (agregaciones SQL en relacional.py);
+    el stock bajo, de MongoDB (catálogo)."""
     dias = max(1, min(dias, 365))
     hoy = _ahora().replace(hour=0, minute=0, second=0)
     desde = hoy - timedelta(days=dias - 1)
-    desde_anterior = desde - timedelta(days=dias)
-
-    # Pocos pedidos (es una cafetería): se traen los dos periodos y se
-    # suman aquí. Las agrupaciones más pesadas van con aggregate() abajo.
-    pedidos = list(db.pedidos.find({"fecha": {"$gte": desde_anterior}}))
-    actuales = [p for p in pedidos if p["fecha"] >= desde]
-    anteriores = [p for p in pedidos if p["fecha"] < desde]
-
-    ventas = [p for p in actuales if _es_venta(p)]
-    ventas_total = round(sum(p["total"] for p in ventas), 2)
-
-    # Serie diaria con todos los días, aunque no haya ventas (para la gráfica)
-    por_dia = {(desde + timedelta(days=i)).strftime("%Y-%m-%d"): [0.0, 0] for i in range(dias)}
-    for p in ventas:
-        clave = p["fecha"].strftime("%Y-%m-%d")
-        if clave in por_dia:
-            por_dia[clave][0] += p["total"]
-            por_dia[clave][1] += 1
-
-    por_metodo = {m: [0.0, 0] for m in METODOS}
-    for p in ventas:
-        m = p["pago"]["metodo"]
-        por_metodo[m][0] += p["total"]
-        por_metodo[m][1] += 1
-
-    # Pendientes: se ven sin importar la fecha (algo que cobrar es algo que cobrar)
-    por_cobrar = list(db.pedidos.find({"estado": "registrado"}, {"total": 1}))
-
-    # Agregación en MongoDB: pedidos por estado en el periodo
-    por_estado = {
-        r["_id"]: r["n"]
-        for r in db.pedidos.aggregate(
-            [
-                {"$match": {"fecha": {"$gte": desde}}},
-                {"$group": {"_id": "$estado", "n": {"$sum": 1}}},
-            ]
-        )
-    }
-
-    # Agregación en MongoDB: productos más vendidos (desenrolla los items)
-    top = list(
-        db.pedidos.aggregate(
-            [
-                {
-                    "$match": {
-                        "fecha": {"$gte": desde},
-                        "estado": {"$ne": "cancelado"},
-                        "pago.estado": "aprobado",
-                    }
-                },
-                {"$unwind": "$items"},
-                {
-                    "$group": {
-                        "_id": "$items.producto_id",
-                        "piezas": {"$sum": "$items.cantidad"},
-                        "total": {
-                            "$sum": {"$multiply": ["$items.cantidad", "$items.precio_unit"]}
-                        },
-                    }
-                },
-                {"$sort": {"piezas": -1, "total": -1}},
-                {"$limit": 5},
-            ]
-        )
-    )
-    nombres = {
-        p["_id"]: p["nombre"] for p in db.productos.find({"_id": {"$in": [t["_id"] for t in top]}})
-    }
-
-    clientes_total = db.usuarios.count_documents({"rol": "cliente"})
+    r = relacional.resumen_ventas(desde, dias)
+    ventas_total = round(r["ventas_total"], 2)
 
     return ResumenAdmin(
         dias=dias,
         ventas_total=ventas_total,
-        ventas_periodo_anterior=round(sum(p["total"] for p in anteriores if _es_venta(p)), 2),
-        pedidos_pagados=len(ventas),
-        ticket_promedio=round(ventas_total / len(ventas), 2) if ventas else 0.0,
-        por_cobrar=round(sum(p["total"] for p in por_cobrar), 2),
-        pedidos_por_cobrar=len(por_cobrar),
-        pedidos_por_enviar=db.pedidos.count_documents({"estado": "pagado"}),
-        pedidos_por_reembolsar=db.pedidos.count_documents({"pago.estado": "por_reembolsar"}),
-        clientes_total=clientes_total,
-        clientes_con_compra=len({p["usuario_id"] for p in ventas}),
-        ventas_por_dia=[
-            PuntoVenta(fecha=f, total=round(v[0], 2), pedidos=v[1]) for f, v in por_dia.items()
-        ],
+        ventas_periodo_anterior=round(r["ventas_periodo_anterior"], 2),
+        pedidos_pagados=r["pedidos_pagados"],
+        ticket_promedio=round(ventas_total / r["pedidos_pagados"], 2) if r["pedidos_pagados"] else 0.0,
+        por_cobrar=round(r["por_cobrar"], 2),
+        pedidos_por_cobrar=r["pedidos_por_cobrar"],
+        pedidos_por_enviar=r["pedidos_por_enviar"],
+        pedidos_por_reembolsar=r["pedidos_por_reembolsar"],
+        clientes_total=r["clientes_total"],
+        clientes_con_compra=r["clientes_con_compra"],
+        recompras_activas=r["recompras_activas"],
+        ventas_por_dia=[PuntoVenta(fecha=p["fecha"], total=round(p["total"], 2), pedidos=p["pedidos"]) for p in r["por_dia"]],
         por_metodo=[
-            VentaMetodo(metodo=m, nombre=METODOS[m]["nombre"], total=round(v[0], 2), pedidos=v[1])
-            for m, v in sorted(por_metodo.items(), key=lambda kv: -kv[1][0])
-        ],
-        por_estado=[ConteoEstado(estado=e, pedidos=por_estado.get(e, 0)) for e in ESTADOS_PEDIDO],
-        top_productos=[
-            ProductoVendido(
-                producto_id=t["_id"],
-                nombre=nombres.get(t["_id"], f"Producto {t['_id']}"),
-                piezas=t["piezas"],
-                total=round(t["total"], 2),
+            VentaMetodo(
+                metodo=m,
+                nombre=METODOS[m]["nombre"],
+                total=round(r["por_metodo"].get(m, {}).get("total", 0.0), 2),
+                pedidos=r["por_metodo"].get(m, {}).get("pedidos", 0),
             )
-            for t in top
+            for m in sorted(METODOS, key=lambda m: -r["por_metodo"].get(m, {}).get("total", 0.0))
+        ],
+        por_estado=[ConteoEstado(estado=e, pedidos=r["por_estado"].get(e, 0)) for e in ESTADOS_PEDIDO],
+        top_productos=[
+            ProductoVendido(producto_id=t["producto_id"], nombre=t["nombre"], piezas=t["piezas"], total=round(t["total"], 2))
+            for t in r["top"]
         ],
         stock_bajo=[
             _producto(d)
@@ -1252,30 +1408,283 @@ def _resumen_admin(dias: int) -> ResumenAdmin:
     )
 
 
-def _filtro_pedidos_admin(estado, metodo, buscar) -> dict:
-    filtro: dict = {}
-    if estado:
-        if estado == "por_cobrar":
-            filtro["estado"] = "registrado"
-        elif estado == "por_reembolsar":
-            filtro["pago.estado"] = "por_reembolsar"
+# =========================================================
+# Checkout: crear un pedido (lo usan registrarPedido y las recompras)
+# =========================================================
+
+TELEFONO_RE = re.compile(r"^\d{10}$")
+RECOMPRA_DIAS = (15, 30, 60)
+
+
+def _juntar_items(items) -> dict[tuple[int, str], int]:
+    """{(producto_id, variante): cantidad}, sumando renglones repetidos."""
+    cantidades: dict[tuple[int, str], int] = {}
+    for item in items:
+        cantidad = item["cantidad"] if isinstance(item, dict) else item.cantidad
+        producto_id = item["producto_id"] if isinstance(item, dict) else item.producto_id
+        variante = (item.get("variante", "") if isinstance(item, dict) else item.variante or "").strip()
+        if cantidad <= 0:
+            raise ValueError("La cantidad debe ser mayor a cero")
+        clave = (producto_id, variante)
+        cantidades[clave] = cantidades.get(clave, 0) + cantidad
+    return cantidades
+
+
+def _productos_de(cantidades) -> dict[int, dict]:
+    ids = list({pid for pid, _ in cantidades})
+    productos = {p["_id"]: p for p in db.productos.find({"_id": {"$in": ids}})}
+    for pid in ids:
+        if pid not in productos:
+            raise ValueError(f"No existe el producto {pid}")
+    return productos
+
+
+def _normalizar_variantes(cantidades, productos) -> dict[tuple[int, str], int]:
+    """Valida la variante de cada renglón. Si el producto tiene variantes y
+    no se eligió ninguna, se usa la primera (p. ej. "Grano entero")."""
+    limpio: dict[tuple[int, str], int] = {}
+    for (pid, variante), cantidad in cantidades.items():
+        opciones = productos[pid].get("variantes") or []
+        if opciones:
+            variante = variante or opciones[0]
+            if variante not in opciones:
+                raise ValueError(f"{productos[pid]['nombre']} no viene en «{variante}»")
         else:
-            filtro["estado"] = estado
-    if metodo:
-        filtro["pago.metodo"] = metodo
-    if buscar and buscar.strip():
-        texto = buscar.strip()
-        numero = re.sub(r"(?i)^(frec-)?#?0*", "", texto)
-        if numero.isdigit():
-            filtro["_id"] = int(numero)
+            variante = ""
+        limpio[(pid, variante)] = limpio.get((pid, variante), 0) + cantidad
+    return limpio
+
+
+def _peso(cantidades, productos) -> float:
+    lineas = [{"producto_id": pid, "cantidad": c} for (pid, _), c in cantidades.items()]
+    pesos = {pid: float(p.get("peso_kg") or envios.PESO_DEFECTO_KG) for pid, p in productos.items()}
+    return envios.peso_de(lineas, pesos)
+
+
+def _resolver_entrega(entrega_in: EntregaInput | None, metodo: str, kg: float) -> dict:
+    """Valida la dirección y la cotización firmada. El costo del envío sale
+    de la FIRMA del servidor, nunca de lo que mande el navegador."""
+    if entrega_in is None or entrega_in.tipo == "recoger":
+        return {"tipo": "recoger", "modo": "manual", "costo": 0.0}
+    if entrega_in.tipo != "domicilio":
+        raise ValueError("Elige cómo quieres recibir tu pedido")
+    if metodo == "efectivo":
+        raise ValueError("El pago en efectivo solo es al recoger en el local")
+    d = {k: (getattr(entrega_in, k) or "").strip() for k in
+         ("nombre", "telefono", "calle", "numero", "colonia", "ciudad", "estado", "cp", "referencias")}
+    faltan = [n for n in ("nombre", "calle", "numero", "colonia", "ciudad", "cp") if not d[n]]
+    if faltan:
+        raise ValueError(f"Completa la dirección de envío ({', '.join(faltan)})")
+    if not TELEFONO_RE.match(d["telefono"]):
+        raise ValueError("El teléfono de entrega debe tener 10 dígitos")
+    if d["estado"] not in envios.ESTADOS_MX:
+        raise ValueError("Elige el estado de la dirección")
+    d["referencias"] = d["referencias"][:200]
+    try:
+        opcion = envios.verificar(entrega_in.opcion_token, d["cp"], kg)
+    except envios.ErrorEnvio as e:
+        raise ValueError(str(e))
+    return {"tipo": "domicilio", **d, **opcion}
+
+
+def _crear_pedido(
+    usuario: dict,
+    items,
+    metodo: str,
+    entrega: dict,
+    *,
+    recompra_cada_dias: int | None = None,
+    suscripcion_id: int | None = None,
+    con=None,
+) -> dict:
+    """Descuenta stock en MongoDB y guarda el pedido en PostgreSQL.
+
+    Stock: actualización condicional atómica ({stock: {$gte: n}} + $inc),
+    así dos compras al mismo tiempo no pueden vender la misma pieza. Si
+    algo falla después (otro producto sin stock, error en Postgres…), se
+    REGRESA el stock ya descontado (compensación), porque una transacción
+    no puede abarcar dos bases de datos distintas.
+
+    Pedido: pedido + renglones + pago + envío (+ la suscripción, si pidió
+    recompra) se insertan en UNA transacción de PostgreSQL."""
+    if metodo not in METODOS:
+        raise ValueError("Elige un método de pago válido")
+    if metodo == "efectivo" and entrega.get("tipo") == "domicilio":
+        raise ValueError("El pago en efectivo solo es al recoger en el local")
+
+    cantidades = _juntar_items(items)
+    if not cantidades:
+        raise ValueError("El pedido no tiene productos")
+    productos = _productos_de(cantidades)
+    cantidades = _normalizar_variantes(cantidades, productos)
+
+    por_producto: dict[int, int] = {}
+    for (pid, _), c in cantidades.items():
+        por_producto[pid] = por_producto.get(pid, 0) + c
+
+    descontados: list[tuple[int, int]] = []
+    precios: dict[int, float] = {}
+    try:
+        for producto_id, cantidad in por_producto.items():
+            prod = db.productos.find_one_and_update(
+                {"_id": producto_id, "stock": {"$gte": cantidad}},
+                {"$inc": {"stock": -cantidad}},
+                return_document=ReturnDocument.BEFORE,
+            )
+            if prod is None:
+                existe = db.productos.find_one({"_id": producto_id}) or productos[producto_id]
+                raise ValueError(f"Stock insuficiente de {existe['nombre']}: quedan {existe['stock']}")
+            descontados.append((producto_id, cantidad))
+            precios[producto_id] = float(prod["precio"])
+
+        lineas = [
+            {
+                "producto_id": pid,
+                "nombre": productos[pid]["nombre"],
+                "variante": variante,
+                "cantidad": cantidad,
+                "precio_unit": precios[pid],
+            }
+            for (pid, variante), cantidad in cantidades.items()
+        ]
+        pago = {
+            "metodo": metodo,
+            "estado": "pendiente",
+            "modo": modo_de(metodo),
+            "actualizado": _ahora(),
+        }
+        columnas_envio = {k: v for k, v in entrega.items() if k in relacional._COLS_ENVIO}
+
+        def guardar(c) -> int:
+            sid = suscripcion_id
+            if recompra_cada_dias:
+                sid = relacional.crear_suscripcion(
+                    c,
+                    usuario_id=usuario["_id"],
+                    cada_dias=recompra_cada_dias,
+                    proxima=date.today() + timedelta(days=recompra_cada_dias),
+                    metodo_pago=metodo,
+                    entrega=relacional_json(entrega),
+                    items=[{"producto_id": pid, "variante": v, "cantidad": n} for (pid, v), n in cantidades.items()],
+                )
+            return relacional.insertar_pedido(
+                c,
+                usuario_id=usuario["_id"],
+                fecha=_ahora(),
+                estado="registrado",
+                lineas=lineas,
+                envio=float(entrega.get("costo") or 0),
+                pago=pago,
+                entrega=columnas_envio,
+                suscripcion_id=sid,
+            )
+
+        if con is not None:
+            with con.transaction():   # SAVEPOINT dentro de la transacción de quien llama
+                pedido_id = guardar(con)
         else:
-            patron = {"$regex": re.escape(texto), "$options": "i"}
-            ids = [
-                u["_id"]
-                for u in db.usuarios.find({"$or": [{"nombre": patron}, {"email": patron}]}, {"_id": 1})
-            ]
-            filtro["usuario_id"] = {"$in": ids}
-    return filtro
+            with relacional.transaccion() as c:
+                pedido_id = guardar(c)
+    except Exception:
+        # Compensación: regresa el stock descontado antes del error
+        for producto_id, cantidad in descontados:
+            db.productos.update_one({"_id": producto_id}, {"$inc": {"stock": cantidad}})
+        raise
+
+    return {"_id": pedido_id, "por_producto": por_producto}
+
+
+def relacional_json(entrega: dict) -> dict:
+    """La entrega elegida se guarda en la suscripción (JSONB) para repetirla."""
+    return {k: v for k, v in entrega.items() if k in relacional._COLS_ENVIO}
+
+
+def _despues_de_crear(pedido: dict, usuario: dict, por_producto) -> None:
+    eventos.publicar(
+        eventos.PEDIDO_NUEVO,
+        f"Pedido nuevo #{pedido['_id']} de {usuario['nombre']} por {_dinero(pedido['total'])}"
+        f" ({METODOS[pedido['pago']['metodo']]['nombre']})",
+        pedido_id=pedido["_id"],
+        usuario_id=usuario["_id"],
+        monto=float(pedido["total"]),
+    )
+    _avisar_stock_bajo(por_producto.keys())
+    correos.pedido_nuevo_tienda(pedido, usuario)
+
+
+def procesar_recompras(hoy: date | None = None) -> int:
+    """Genera el pedido de cada suscripción a la que ya le tocó.
+
+    Lo corre: el ciclo automático del backend (cada hora), el botón
+    "Procesar ahora" del panel y, si se configura, un cron externo
+    (POST /tareas/recompras). FOR UPDATE SKIP LOCKED evita pedidos dobles
+    si dos de esos corren al mismo tiempo."""
+    hoy = hoy or date.today()
+    creados: list[tuple[dict, dict, int]] = []
+    sin_stock: list[tuple[dict, str]] = []
+    with relacional.transaccion() as con:
+        for s in relacional.recompras_vencidas(con, hoy):
+            usuario = relacional.usuario(s["usuario_id"])
+            if usuario is None or not usuario["activo"]:
+                continue
+            try:
+                r = _crear_pedido(usuario, s["items"], s["metodo_pago"], s["entrega"] or {"tipo": "recoger"},
+                                  suscripcion_id=s["id"], con=con)
+                siguiente = hoy + timedelta(days=s["cada_dias"])
+                creados.append((r, usuario, s["cada_dias"]))
+            except ValueError as e:
+                # Sin stock (u otro problema): se reintenta mañana y se avisa
+                siguiente = hoy + timedelta(days=1)
+                sin_stock.append((usuario, str(e)))
+            con.execute("UPDATE suscripciones SET proxima = %s WHERE id = %s", (siguiente, s["id"]))
+
+    for r, usuario, cada_dias in creados:
+        pedido = relacional.pedido(r["_id"])
+        _despues_de_crear(pedido, usuario, r["por_producto"])
+        correos.recompra_lista(pedido, usuario, cada_dias)
+    for usuario, mensaje in sin_stock:
+        correos.recompra_sin_stock(usuario, mensaje)
+    if creados:
+        print(f"[frecuente] Recompras: se generaron {len(creados)} pedidos")
+    return len(creados)
+
+
+def _generar_guia(pedido: dict) -> dict:
+    """Pide la guía a Envia.com con el peso real del pedido."""
+    productos = {p["_id"]: p for p in db.productos.find({"_id": {"$in": [i["producto_id"] for i in pedido["items"]]}})}
+    pesos = {pid: float(p.get("peso_kg") or envios.PESO_DEFECTO_KG) for pid, p in productos.items()}
+    try:
+        return envios.generar_guia(pedido, envios.peso_de(pedido["items"], pesos))
+    except envios.ErrorEnvio as e:
+        raise ValueError(str(e))
+
+
+def _cliente_admin_de(usuario_id: int) -> ClienteAdmin:
+    u = relacional.usuario(usuario_id)
+    fila = next(
+        (c for c in _clientes_admin(u["email"], 100, 0, incluir_admins=True).clientes if c.id == usuario_id), None
+    )
+    if fila is None:
+        raise ValueError(f"No existe el usuario {usuario_id}")
+    return fila
+
+
+def _integraciones() -> List[Integracion]:
+    """Las APIs de terceros del proyecto y en qué modo está cada una."""
+    return [
+        Integracion(clave="mercadopago", nombre="Mercado Pago", para_que="Cobro con tarjeta, OXXO y saldo",
+                    modo=modo_de("mercadopago"), activa=True),
+        Integracion(clave="paypal", nombre="PayPal", para_que="Cobro con cuenta PayPal",
+                    modo=modo_de("paypal"), activa=True),
+        Integracion(clave="envia", nombre="Envia.com", para_que="Cotizar envíos, generar guías y rastrear",
+                    modo=envios.modo(), activa=True),
+        Integracion(clave="envia_geocodes", nombre="Envia Geocodes", para_que="Estado, ciudad y colonias por código postal",
+                    modo="real", activa=True),
+        Integracion(clave="brevo", nombre="Brevo", para_que="Correos de confirmación, envío y recompra",
+                    modo=correos.modo(), activa=True),
+        Integracion(clave="openfreemap", nombre="OpenFreeMap + MapLibre", para_que="Mapa del local en la página de inicio",
+                    modo="real", activa=True),
+    ]
 
 
 # =========================================================
@@ -1293,13 +1702,59 @@ class Query:
         return _categoria(db.categorias.find_one({"_id": id}))
 
     @strawberry.field
-    def productos(self, categoria_id: Optional[int] = None) -> List[Producto]:
-        filtro = {} if categoria_id is None else {"categoria_id": categoria_id}
+    def productos(
+        self,
+        categoria_id: Optional[int] = None,
+        metodo: Optional[str] = None,
+        buscar: Optional[str] = None,
+    ) -> List[Producto]:
+        """Catálogo con filtros: categoría, método de preparación y texto libre
+        (busca en nombre, descripción y variantes, sin importar mayúsculas)."""
+        filtro: dict = {}
+        if categoria_id is not None:
+            filtro["categoria_id"] = categoria_id
+        if metodo:
+            filtro["metodos"] = metodo          # el arreglo contiene ese método
+        if buscar and buscar.strip():
+            patron = {"$regex": re.escape(buscar.strip()[:60]), "$options": "i"}
+            filtro["$or"] = [{"nombre": patron}, {"descripcion": patron}, {"variantes": patron}]
         return [_producto(d) for d in db.productos.find(filtro).sort("_id", ASCENDING)]
 
     @strawberry.field
     def producto(self, id: int) -> Optional[Producto]:
         return _producto(db.productos.find_one({"_id": id}))
+
+    @strawberry.field
+    def metodos_preparacion(self) -> List[MetodoPreparacion]:
+        return [MetodoPreparacion(clave=k, nombre=v) for k, v in METODOS_PREPARACION.items()]
+
+    @strawberry.field
+    def buscar_codigo_postal(self, cp: str) -> InfoCodigoPostal:
+        """Autollenado de la dirección (API pública de Envia)."""
+        try:
+            return InfoCodigoPostal(**envios.buscar_cp(cp))
+        except envios.ErrorEnvio as e:
+            raise ValueError(str(e))
+
+    @strawberry.field
+    def cotizar_envio(self, input: CotizarEnvioInput) -> List[OpcionEnvio]:
+        """Opciones de paquetería para el carrito. El peso se calcula aquí
+        con los productos de la base, no con lo que diga el navegador."""
+        cantidades = _juntar_items(input.items)
+        if not cantidades:
+            raise ValueError("Tu carrito está vacío")
+        productos = _productos_de(cantidades)
+        kg = _peso(cantidades, productos)
+        valor = sum(float(productos[pid]["precio"]) * c for (pid, _), c in cantidades.items())
+        try:
+            opciones = envios.cotizar(
+                {"cp": input.cp.strip(), "estado": input.estado.strip().upper(), "ciudad": input.ciudad.strip()},
+                kg,
+                valor,
+            )
+        except envios.ErrorEnvio as e:
+            raise ValueError(str(e))
+        return [OpcionEnvio(**o) for o in opciones]
 
     @strawberry.field
     def yo(self, info: Info) -> Optional[Usuario]:
@@ -1309,17 +1764,37 @@ class Query:
     @strawberry.field
     def mis_pedidos(self, info: Info) -> List[Pedido]:
         usuario = usuario_actual(info)
-        cursor = db.pedidos.find({"usuario_id": usuario["_id"]}).sort("_id", DESCENDING)
-        return [_pedido(d) for d in cursor]
+        return [_pedido(d) for d in relacional.pedidos_de_usuario(usuario["_id"])]
 
     @strawberry.field
     def pedido(self, info: Info, id: int) -> Optional[Pedido]:
         """Un cliente solo ve sus pedidos; un admin ve cualquiera."""
         usuario = usuario_actual(info)
-        filtro = {"_id": id}
-        if usuario.get("rol") != "admin":
-            filtro["usuario_id"] = usuario["_id"]
-        return _pedido(db.pedidos.find_one(filtro))
+        return _pedido(relacional.pedido(id, None if usuario.get("rol") == "admin" else usuario["_id"]))
+
+    @strawberry.field
+    def rastrear_pedido(self, info: Info, id: int) -> Rastreo:
+        """Estado del envío con la paquetería (Envia.com)."""
+        pedido = _pedido_propio(usuario_actual(info), id)
+        entrega = pedido.get("entrega") or {}
+        if entrega.get("tipo") != "domicilio":
+            raise ValueError("Este pedido se recoge en el local")
+        try:
+            r = envios.rastrear(pedido)
+        except envios.ErrorEnvio as e:
+            raise ValueError(str(e))
+        return Rastreo(
+            guia=entrega.get("guia", ""),
+            paqueteria=entrega.get("descripcion", ""),
+            estado=r["estado"],
+            rastreo_url=entrega.get("rastreo_url", ""),
+            eventos=[EventoRastreo(**e) for e in r["eventos"]],
+        )
+
+    @strawberry.field
+    def mis_suscripciones(self, info: Info) -> List[Suscripcion]:
+        usuario = usuario_actual(info)
+        return [_suscripcion(d) for d in relacional.suscripciones(usuario_id=usuario["_id"])]
 
     @strawberry.field
     def metodos_pago(self) -> List[MetodoPago]:
@@ -1355,13 +1830,31 @@ class Query:
         """Todos los pedidos con filtros y paginación (más recientes primero).
         estado acepta además 'por_cobrar' y 'por_reembolsar'."""
         requiere_admin(info)
-        filtro = _filtro_pedidos_admin(estado, metodo, buscar)
         limite = max(1, min(limite, 100))
-        cursor = db.pedidos.find(filtro).sort("_id", DESCENDING).skip(max(0, salto)).limit(limite)
-        return PaginaPedidos(
-            total=db.pedidos.count_documents(filtro),
-            pedidos=[_pedido(d) for d in cursor],
-        )
+        total, docs = relacional.pedidos_admin(estado, metodo, buscar, limite, max(0, salto))
+        return PaginaPedidos(total=total, pedidos=[_pedido(d) for d in docs])
+
+    @strawberry.field
+    def suscripciones_admin(self, info: Info, estado: Optional[str] = None) -> List[Suscripcion]:
+        requiere_admin(info)
+        return [_suscripcion(d) for d in relacional.suscripciones(estado=estado or None)]
+
+    @strawberry.field
+    def correos_admin(self, info: Info, limite: int = 30) -> List[CorreoEnviado]:
+        """Bitácora de correos (Brevo o simulados)."""
+        requiere_admin(info)
+        return [
+            CorreoEnviado(
+                id=c["id"], destinatario=c["destinatario"], asunto=c["asunto"], plantilla=c["plantilla"],
+                estado=c["estado"], detalle=c["detalle"], pedido_id=c["pedido_id"], fecha=_fecha_txt(c["creado"]) or "",
+            )
+            for c in relacional.correos_recientes(max(1, min(limite, 100)))
+        ]
+
+    @strawberry.field
+    def integraciones(self, info: Info) -> List[Integracion]:
+        requiere_admin(info)
+        return _integraciones()
 
     # ---------------- membresías ----------------
 
@@ -1435,10 +1928,15 @@ class Query:
 
     @strawberry.field
     def clientes_admin(
-        self, info: Info, buscar: Optional[str] = None, limite: int = 20, salto: int = 0
+        self,
+        info: Info,
+        buscar: Optional[str] = None,
+        limite: int = 20,
+        salto: int = 0,
+        incluir_admins: bool = False,
     ) -> PaginaClientes:
         requiere_admin(info)
-        return _clientes_admin(buscar, limite, salto)
+        return _clientes_admin(buscar, limite, salto, incluir_admins)
 
 
 # =========================================================
@@ -1489,6 +1987,30 @@ def _validar_categoria(categoria_id: int) -> None:
         raise ValueError(f"No existe la categoría {categoria_id}")
 
 
+def _limpiar_variantes(variantes: List[str]) -> List[str]:
+    limpias: List[str] = []
+    for v in variantes:
+        v = (v or "").strip()[:60]
+        if v and v not in limpias:
+            limpias.append(v)
+    if len(limpias) > 12:
+        raise ValueError("Máximo 12 variantes por producto")
+    return limpias
+
+
+def _limpiar_metodos(metodos: List[str]) -> List[str]:
+    invalidos = [m for m in metodos if m not in METODOS_PREPARACION]
+    if invalidos:
+        raise ValueError(f"Método de preparación desconocido: {', '.join(invalidos)}")
+    return list(dict.fromkeys(metodos))
+
+
+def _validar_peso(peso_kg: float) -> float:
+    if not 0 < peso_kg <= 30:
+        raise ValueError("El peso debe estar entre 0 y 30 kg (sirve para cotizar el envío)")
+    return round(float(peso_kg), 3)
+
+
 @strawberry.type
 class Mutation:
     # ---------------- cuentas ----------------
@@ -1509,29 +2031,23 @@ class Mutation:
         telefono = input.telefono.strip()
         if telefono and not re.fullmatch(r"\d{10}", telefono):
             raise ValueError("El teléfono debe tener 10 dígitos, solo números")
-        if db.usuarios.count_documents({"email": email}, limit=1):
+        if relacional.existe_email(email):
             raise ValueError("Ya existe una cuenta con ese correo")
 
-        doc = {
-            "_id": siguiente_id("usuarios"),
-            "nombre": nombre,
-            "email": email,
-            "telefono": telefono,
-            "rol": "cliente",  # las cuentas nuevas nunca nacen como admin
-            "password_hash": hashear_password(input.password),
-            "creado": datetime.now().replace(microsecond=0),
-        }
         try:
-            db.usuarios.insert_one(doc)
-        except DuplicateKeyError:
+            # rol "cliente": las cuentas nuevas nunca nacen como admin
+            doc = relacional.crear_usuario(nombre, email, telefono, hashear_password(input.password))
+        except relacional.CorreoDuplicado:
             # Por si dos registros con el mismo correo llegan al mismo tiempo
+            # (lo detecta el UNIQUE de la tabla usuarios)
             raise ValueError("Ya existe una cuenta con ese correo")
 
+        correos.bienvenida(doc)
         return AuthPayload(token=crear_token(doc["_id"]), usuario=_usuario(doc))
 
     @strawberry.mutation
     def iniciar_sesion(self, email: str, password: str) -> AuthPayload:
-        usuario = db.usuarios.find_one({"email": email.strip().lower()})
+        usuario = relacional.usuario_por_email(email.strip().lower())
         # Mismo mensaje Y mismo tiempo si no existe el correo o si la
         # contraseña está mal, para no revelar qué correos tienen cuenta.
         if usuario is None:
@@ -1539,6 +2055,8 @@ class Mutation:
             raise ValueError("Correo o contraseña incorrectos")
         if not verificar_password(password, usuario["password_hash"]):
             raise ValueError("Correo o contraseña incorrectos")
+        if not usuario["activo"]:
+            raise ValueError("Tu cuenta está desactivada. Escríbenos si crees que es un error")
         return AuthPayload(token=crear_token(usuario["_id"]), usuario=_usuario(usuario))
 
     # ---------------- catálogo (solo admin) ----------------
@@ -1554,6 +2072,7 @@ class Mutation:
         imagenes = _validar_imagenes(
             input.imagenes or ([input.imagen_url] if input.imagen_url else [])
         )
+        variantes = _limpiar_variantes(input.variantes)
 
         doc = {
             "_id": siguiente_id("productos"),
@@ -1564,6 +2083,10 @@ class Mutation:
             "imagen_url": imagenes[0] if imagenes else "",
             "imagenes": imagenes,
             "categoria_id": input.categoria_id,
+            "variante_nombre": (input.variante_nombre.strip() or "Presentación") if variantes else "",
+            "variantes": variantes,
+            "metodos": _limpiar_metodos(input.metodos),
+            "peso_kg": _validar_peso(input.peso_kg),
         }
         db.productos.insert_one(doc)
         return _producto(doc)
@@ -1594,6 +2117,16 @@ class Mutation:
             cambios["nombre"] = cambios["nombre"].strip()
         if "categoria_id" in cambios:
             _validar_categoria(cambios["categoria_id"])
+        if input.variantes is not None:
+            cambios["variantes"] = _limpiar_variantes(input.variantes)
+            if not cambios["variantes"]:
+                cambios["variante_nombre"] = ""
+        if input.variante_nombre is not None and cambios.get("variantes", True):
+            cambios["variante_nombre"] = input.variante_nombre.strip() or "Presentación"
+        if input.metodos is not None:
+            cambios["metodos"] = _limpiar_metodos(input.metodos)
+        if input.peso_kg is not None:
+            cambios["peso_kg"] = _validar_peso(input.peso_kg)
 
         try:
             if cambios:
@@ -1654,7 +2187,8 @@ class Mutation:
     def eliminar_producto(self, info: Info, id: int) -> bool:
         requiere_admin(info)
         # Equivalente al ON DELETE RESTRICT: no se borra si ya se vendió
-        if db.pedidos.count_documents({"items.producto_id": id}, limit=1):
+        # (los renglones de pedidos están en PostgreSQL)
+        if relacional.producto_vendido(id):
             raise ValueError("No se puede eliminar: el producto ya aparece en pedidos")
         return db.productos.delete_one({"_id": id}).deleted_count > 0
 
@@ -1662,94 +2196,65 @@ class Mutation:
 
     @strawberry.mutation
     def registrar_pedido(self, info: Info, input: PedidoInput) -> Pedido:
-        """Checkout: valida stock, calcula el total con el precio vigente,
-        descuenta stock y guarda el Pedido con sus items embebidos.
+        """Checkout: valida stock, calcula el total con el precio vigente y el
+        envío firmado, descuenta stock y guarda el pedido (ver _crear_pedido).
 
-        El descuento de stock usa una actualización condicional atómica
-        ({stock: {$gte: cantidad}} + $inc), así dos compras al mismo tiempo
-        no pueden vender el mismo stock. Si algún producto falla, se
-        regresa el stock que ya se había descontado (compensación), para
-        que funcione igual en un MongoDB local sin replica set."""
+        Con recompraCadaDias (15, 30 o 60) además crea la suscripción: el
+        mismo pedido se generará solo cada ese número de días."""
         usuario = usuario_actual(info)
-
         if not input.items:
             raise ValueError("El pedido no tiene productos")
-        if input.metodo_pago not in METODOS:
-            raise ValueError("Elige un método de pago válido")
+        if input.recompra_cada_dias is not None and input.recompra_cada_dias not in RECOMPRA_DIAS:
+            raise ValueError("La recompra puede ser cada 15, 30 o 60 días")
+        if input.recompra_cada_dias and input.metodo_pago == "efectivo":
+            raise ValueError("La recompra se paga en línea o por transferencia, no en efectivo")
 
-        # Junta cantidades si el mismo producto viene repetido
-        cantidades: dict[int, int] = {}
-        for item in input.items:
-            if item.cantidad <= 0:
-                raise ValueError("La cantidad debe ser mayor a cero")
-            cantidades[item.producto_id] = cantidades.get(item.producto_id, 0) + item.cantidad
+        cantidades = _juntar_items(input.items)
+        productos = _productos_de(cantidades)
+        kg = _peso(_normalizar_variantes(cantidades, productos), productos)
+        entrega = _resolver_entrega(input.entrega, input.metodo_pago, kg)
 
-        descontados: list[tuple[int, int]] = []
-        lineas = []
-        try:
-            for producto_id, cantidad in cantidades.items():
-                prod = db.productos.find_one_and_update(
-                    {"_id": producto_id, "stock": {"$gte": cantidad}},
-                    {"$inc": {"stock": -cantidad}},
-                    return_document=ReturnDocument.BEFORE,
-                )
-                if prod is None:
-                    existe = db.productos.find_one({"_id": producto_id})
-                    if existe is None:
-                        raise ValueError(f"No existe el producto {producto_id}")
-                    raise ValueError(
-                        f"Stock insuficiente de {existe['nombre']}: "
-                        f"quedan {existe['stock']}"
-                    )
-                descontados.append((producto_id, cantidad))
-                lineas.append(
-                    {
-                        "producto_id": producto_id,
-                        "cantidad": cantidad,
-                        "precio_unit": float(prod["precio"]),
-                    }
-                )
+        r = _crear_pedido(
+            usuario, input.items, input.metodo_pago, entrega, recompra_cada_dias=input.recompra_cada_dias
+        )
+        pedido = relacional.pedido(r["_id"])
+        _despues_de_crear(pedido, usuario, r["por_producto"])
+        return _pedido(pedido)
 
-            total = round(sum(l["cantidad"] * l["precio_unit"] for l in lineas), 2)
-            pedido_id = siguiente_id("pedidos")
-            doc = {
-                "_id": pedido_id,
-                "usuario_id": usuario["_id"],
-                "fecha": _ahora(),
-                "estado": "registrado",
-                "total": total,
-                "items": lineas,
-                # El cobro arranca pendiente; iniciarPago lleva a la pasarela
-                "pago": {
-                    "metodo": input.metodo_pago,
-                    "estado": "pendiente",
-                    "modo": modo_de(input.metodo_pago),
-                    "referencia": referencia_de(pedido_id),
-                    "proveedor_id": "",
-                    "pago_id": "",
-                    "detalle": "",
-                    "intentos": 0,
-                    "fecha_pago": None,
-                    "actualizado": _ahora(),
-                },
-            }
-            db.pedidos.insert_one(doc)
-            eventos.publicar(
-                eventos.PEDIDO_NUEVO,
-                f"Pedido nuevo #{pedido_id} de {usuario['nombre']} por {_dinero(total)}"
-                f" ({METODOS[input.metodo_pago]['nombre']})",
-                pedido_id=pedido_id,
-                usuario_id=usuario["_id"],
-                monto=total,
-            )
-            _avisar_stock_bajo(cantidades.keys())
-            return _pedido(doc)
+    # ---------------- recompras (cliente) ----------------
 
-        except Exception:
-            # Compensación: regresa el stock descontado antes del error
-            for producto_id, cantidad in descontados:
-                db.productos.update_one({"_id": producto_id}, {"$inc": {"stock": cantidad}})
-            raise
+    @strawberry.mutation
+    def cambiar_mi_suscripcion(
+        self,
+        info: Info,
+        id: int,
+        estado: Optional[str] = None,
+        cada_dias: Optional[int] = None,
+    ) -> Suscripcion:
+        """Pausar ('pausada'), reanudar ('activa'), cancelar ('cancelada') o
+        cambiar cada cuántos días llega. Una cancelada ya no se reactiva."""
+        usuario = usuario_actual(info)
+        cambios: dict = {}
+        if estado is not None:
+            if estado not in ("activa", "pausada", "cancelada"):
+                raise ValueError("Estado de suscripción inválido")
+            cambios["estado"] = estado
+        if cada_dias is not None:
+            if cada_dias not in RECOMPRA_DIAS:
+                raise ValueError("La recompra puede ser cada 15, 30 o 60 días")
+            cambios["cada_dias"] = cada_dias
+        if not cambios:
+            raise ValueError("No hay nada que cambiar")
+        actual = relacional.suscripcion(id, usuario["_id"])
+        if actual is None:
+            raise ValueError(f"No encontramos la suscripción {id}")
+        if cambios.get("estado") == "activa" and actual["proxima"] < date.today():
+            # Al reanudar después de mucho tiempo no se generan pedidos atrasados
+            cambios["proxima"] = date.today() + timedelta(days=cambios.get("cada_dias", actual["cada_dias"]))
+        doc = relacional.cambiar_suscripcion(id, usuario["_id"], **cambios)
+        if doc is None:
+            raise ValueError("Esta suscripción ya está cancelada")
+        return _suscripcion(doc)
 
     # ---------------- pagos ----------------
 
@@ -1776,20 +2281,22 @@ class Mutation:
         metodo = metodo or pago.get("metodo") or "mercadopago"
         if metodo not in METODOS:
             raise ValueError("Elige un método de pago válido")
+        if metodo == "efectivo" and (pedido.get("entrega") or {}).get("tipo") == "domicilio":
+            raise ValueError("El pago en efectivo solo es al recoger en el local")
 
         modo = modo_de(metodo)
         intento = int(pago.get("intentos", 0)) + 1
         cambios = {
-            "pago.metodo": metodo,
-            "pago.modo": modo,
-            "pago.estado": "pendiente",
-            "pago.referencia": referencia_de(pedido_id),
-            "pago.intentos": intento,
-            "pago.actualizado": _ahora(),
+            "metodo": metodo,
+            "modo": modo,
+            "estado": "pendiente",
+            "referencia": referencia_de(pedido_id),
+            "intentos": intento,
+            "actualizado": _ahora(),
         }
         if metodo != pago.get("metodo"):
-            cambios["pago.proveedor_id"] = ""
-            cambios["pago.detalle"] = ""
+            cambios["proveedor_id"] = ""
+            cambios["detalle"] = ""
 
         url = None
         try:
@@ -1799,17 +2306,18 @@ class Mutation:
                 r = pagos.mp_crear_preferencia(
                     pedido, _lineas_con_nombre(pedido), usuario["email"], intento
                 )
-                cambios["pago.proveedor_id"], url = r["proveedor_id"], r["url"]
+                cambios["proveedor_id"], url = r["proveedor_id"], r["url"]
             elif metodo == "paypal":
                 r = pagos.paypal_crear_orden(pedido, intento)
-                cambios["pago.proveedor_id"], url = r["proveedor_id"], r["url"]
+                cambios["proveedor_id"], url = r["proveedor_id"], r["url"]
         except ErrorPago as e:
             raise ValueError(str(e))
 
-        doc = db.pedidos.find_one_and_update(
-            {"_id": pedido_id, "estado": "registrado"},
-            {"$set": cambios},
-            return_document=ReturnDocument.AFTER,
+        doc = relacional.actualizar_pedido(
+            pedido_id,
+            pago=cambios,
+            condicion=lambda actual: actual["estado"] == "registrado"
+            and actual["pago"]["estado"] not in PAGO_CERRADO,
         )
         if doc is None:
             raise ValueError("Este pedido ya no tiene un pago pendiente")
@@ -1874,7 +2382,7 @@ class Mutation:
         - registrado → entregado: solo efectivo (se cobra al recoger).
         - → cancelado: regresa el stock; si ya estaba pagado queda 'por reembolsar'."""
         requiere_admin(info)
-        pedido = db.pedidos.find_one({"_id": id})
+        pedido = relacional.pedido(id)
         if pedido is None:
             raise ValueError(f"No existe el pedido {id}")
         actual = pedido["estado"]
@@ -1886,26 +2394,31 @@ class Mutation:
         if estado == "cancelado":
             return _pedido(_cancelar(pedido))
 
-        pago = pedido.get("pago") or {}
-        cambios = {"estado": estado}
+        pago = pedido["pago"]
+        entrega = pedido.get("entrega") or {}
+        cambios_pago = {}
         if actual == "registrado":
             # Pasar de registrado a pagado/entregado implica que ya se cobró
-            if estado == "entregado" and pago.get("metodo") not in ("efectivo", None):
+            if estado == "entregado" and pago["metodo"] != "efectivo":
                 raise ValueError("Primero confirma el pago; solo efectivo se entrega sin pagar")
-            if pago:
-                cambios.update(
-                    {
-                        "pago.estado": "aprobado",
-                        "pago.fecha_pago": _ahora(),
-                        "pago.detalle": "Confirmado por la tienda",
-                        "pago.actualizado": _ahora(),
-                    }
-                )
+            cambios_pago = {
+                "estado": "aprobado",
+                "fecha_pago": _ahora(),
+                "detalle": "Confirmado por la tienda",
+                "actualizado": _ahora(),
+            }
 
-        doc = db.pedidos.find_one_and_update(
-            {"_id": id, "estado": actual},  # nadie lo movió mientras tanto
-            {"$set": cambios},
-            return_document=ReturnDocument.AFTER,
+        # Al enviarlo a domicilio se genera la guía con la paquetería elegida
+        cambios_entrega = None
+        if estado == "enviado" and entrega.get("tipo") == "domicilio" and not entrega.get("guia"):
+            cambios_entrega = _generar_guia(pedido)
+
+        doc = relacional.actualizar_pedido(
+            id,
+            pedido={"estado": estado},
+            pago=cambios_pago,
+            entrega=cambios_entrega,
+            condicion=lambda a: a["estado"] == actual,  # nadie lo movió mientras tanto
         )
         if doc is None:
             raise ValueError("Alguien más actualizó este pedido; recarga la página")
@@ -1915,15 +2428,63 @@ class Mutation:
             pedido_id=id,
             usuario_id=doc["usuario_id"],
         )
+        cliente = relacional.usuario(doc["usuario_id"])
+        if cliente and cambios_pago and estado == "pagado":
+            correos.pedido_confirmado(doc, cliente)
+        if cliente and estado == "enviado" and (doc.get("entrega") or {}).get("tipo") == "domicilio":
+            correos.pedido_enviado(doc, cliente)
         return _pedido(doc)
+
+    @strawberry.mutation
+    def generar_guia(self, info: Info, id: int) -> Pedido:
+        """Genera (o regenera si falló) la guía de un pedido a domicilio sin
+        cambiar su estado. Normalmente se hace sola al marcarlo enviado."""
+        requiere_admin(info)
+        pedido = relacional.pedido(id)
+        if pedido is None:
+            raise ValueError(f"No existe el pedido {id}")
+        if pedido["estado"] not in ("pagado", "enviado"):
+            raise ValueError("Solo se genera guía de pedidos pagados")
+        doc = relacional.actualizar_pedido(id, entrega=_generar_guia(pedido))
+        return _pedido(doc)
+
+    @strawberry.mutation
+    def procesar_recompras(self, info: Info) -> int:
+        """Genera ya los pedidos de las suscripciones que vencen hoy o antes."""
+        requiere_admin(info)
+        return procesar_recompras()
+
+    # ---------------- usuarios (solo admin) ----------------
+
+    @strawberry.mutation
+    def cambiar_rol_usuario(self, info: Info, id: int, rol: str) -> ClienteAdmin:
+        admin = requiere_admin(info)
+        if rol not in ("cliente", "admin"):
+            raise ValueError("Rol inválido")
+        if id == admin["_id"] and rol != "admin":
+            raise ValueError("No puedes quitarte el rol de administrador a ti mismo")
+        if relacional.actualizar_usuario(id, rol=rol) is None:
+            raise ValueError(f"No existe el usuario {id}")
+        return _cliente_admin_de(id)
+
+    @strawberry.mutation
+    def cambiar_activo_usuario(self, info: Info, id: int, activo: bool) -> ClienteAdmin:
+        """Desactivar = ya no puede iniciar sesión y su token deja de servir.
+        No se borra: sus pedidos y pagos se conservan (historial contable)."""
+        admin = requiere_admin(info)
+        if id == admin["_id"] and not activo:
+            raise ValueError("No puedes desactivar tu propia cuenta")
+        if relacional.actualizar_usuario(id, activo=activo) is None:
+            raise ValueError(f"No existe el usuario {id}")
+        return _cliente_admin_de(id)
 
     @strawberry.mutation
     def marcar_reembolsado(self, info: Info, id: int) -> Pedido:
         requiere_admin(info)
-        doc = db.pedidos.find_one_and_update(
-            {"_id": id, "pago.estado": "por_reembolsar"},
-            {"$set": {"pago.estado": "reembolsado", "pago.actualizado": _ahora()}},
-            return_document=ReturnDocument.AFTER,
+        doc = relacional.actualizar_pedido(
+            id,
+            pago={"estado": "reembolsado", "actualizado": _ahora()},
+            condicion=lambda a: a["pago"]["estado"] == "por_reembolsar",
         )
         if doc is None:
             raise ValueError("Este pedido no tiene un reembolso pendiente")
@@ -2203,7 +2764,7 @@ class Mutation:
         if nuevo is None:
             raise ValueError("Este cliente ya canjeó su beneficio de hoy")
 
-        usuario = db.usuarios.find_one({"_id": nuevo["usuario_id"]}) or {}
+        usuario = relacional.usuario(nuevo["usuario_id"]) or {}
         eventos.publicar(
             eventos.CANJE,
             f"{usuario.get('nombre', 'Cliente')} canjeó: {opcion} ({plan.get('nombre', '')})",
@@ -2297,11 +2858,11 @@ class Subscription:
         usuario = usuario_actual(info)
         _pedido_propio(usuario, id)  # valida que sea suyo (o admin)
         with eventos.suscribirse() as cola:
-            yield _pedido(db.pedidos.find_one({"_id": id}))
+            yield _pedido(relacional.pedido(id))
             while True:
                 evento = await cola.get()
                 if evento.get("pedido_id") == id:
-                    yield _pedido(db.pedidos.find_one({"_id": id}))
+                    yield _pedido(relacional.pedido(id))
 
     @strawberry.subscription
     async def seguir_membresia(self, info: Info, id: int) -> AsyncGenerator[Membresia, None]:

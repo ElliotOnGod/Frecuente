@@ -1,0 +1,16 @@
+---
+/** /tienda — todo el catálogo con buscador y filtros (categoría y método de preparación). */
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Tienda from "../components/islas/Tienda.jsx";
+import { SkeletonGrid } from "../components/islas/Skeleton.jsx";
+---
+<BaseLayout titulo="Tienda — Frecuente">
+  <div class="cf-contenedor">
+    <Tienda client:only="react">
+      <div slot="fallback">
+        <h1>Tienda</h1>
+        <SkeletonGrid cantidad={6} />
+      </div>
+    </Tienda>
+  </div>
+</BaseLayout>
