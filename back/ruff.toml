@@ -1,0 +1,22 @@
+# Análisis de calidad del backend (lo corre el pipeline de CI: `ruff check .`)
+target-version = "py311"
+line-length = 120
+extend-exclude = [".venv"]
+
+[lint]
+# E/W: estilo PEP 8 · F: errores reales (variables sin usar, nombres que no existen)
+# B: errores comunes (bugbear) · S: seguridad básica (bandit)
+select = ["E", "W", "F", "B", "S"]
+ignore = [
+    "E501",  # líneas largas: se revisan a ojo
+    "E741",  # nombres como `l` en comprensiones cortas
+    "B008",  # strawberry.field(default_factory=…) en firmas es lo normal
+    "B904",  # raise … sin from en los resolvers: el mensaje es para el usuario
+    "S101",  # assert en pruebas
+    "S310",  # urllib a URLs fijas de Brevo, Envia, Mercado Pago y PayPal
+    "S311",  # random solo para datos de ejemplo, no para seguridad
+    "S608",  # SQL armado con psycopg.sql y solo columnas de una lista blanca
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["S105", "S106", "E402"]

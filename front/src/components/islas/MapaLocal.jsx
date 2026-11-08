@@ -218,7 +218,7 @@ export default function MapaLocal() {
       {fallo && (
         <p className="cf-mapa__fallo">
           No se pudo cargar el mapa.{" "}
-          <a href={ENLACES_LOCAL.openStreetMap} target="_blank" rel="noopener">Ver en OpenStreetMap</a>
+          <a href={ENLACES_LOCAL.openStreetMap} target="_blank" rel="noopener noreferrer">Ver en OpenStreetMap</a>
         </p>
       )}
     </div>

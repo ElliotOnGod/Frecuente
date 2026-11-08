@@ -37,7 +37,22 @@
         "https://images.unsplash.com/photo-1562051036-e0eea191d42f?auto=format&fit=crop&q=80",
         "https://images.unsplash.com/photo-1675306408031-a9aad9f23308?auto=format&fit=crop&q=80"
       ],
-      "categoria_id": 1
+      "categoria_id": 1,
+      "metodos": [
+        "espresso",
+        "prensa",
+        "goteo",
+        "frio"
+      ],
+      "peso_kg": 0.3,
+      "variante_nombre": "Molienda",
+      "variantes": [
+        "Grano entero",
+        "Molido para espresso",
+        "Molido para V60 / Chemex",
+        "Molido para prensa francesa",
+        "Molido para cafetera de goteo"
+      ]
     },
     {
       "id": 2,
@@ -50,19 +65,47 @@
         "https://images.unsplash.com/photo-1587955245893-389f2215c6eb?auto=format&fit=crop&q=80",
         "https://images.unsplash.com/photo-1541469406036-71229832e06e?auto=format&fit=crop&q=80"
       ],
-      "categoria_id": 1
+      "categoria_id": 1,
+      "metodos": [
+        "filtro",
+        "prensa",
+        "frio"
+      ],
+      "peso_kg": 0.3,
+      "variante_nombre": "Molienda",
+      "variantes": [
+        "Grano entero",
+        "Molido para espresso",
+        "Molido para V60 / Chemex",
+        "Molido para prensa francesa",
+        "Molido para cafetera de goteo"
+      ]
     },
     {
       "id": 3,
-      "nombre": "Chiapas Altura molido 500 g",
-      "descripcion": "Molienda media para cafetera de goteo. Dulce y equilibrado.",
+      "nombre": "Chiapas Altura 500 g",
+      "descripcion": "Dulce y equilibrado, de altura. Te lo molemos para tu método o te lo mandamos en grano.",
       "precio": 240.0,
       "stock": 25,
       "imagen_url": "https://images.unsplash.com/photo-1770123366817-743776f66d6a?auto=format&fit=crop&q=80",
       "imagenes": [
         "https://images.unsplash.com/photo-1770123366817-743776f66d6a?auto=format&fit=crop&q=80"
       ],
-      "categoria_id": 1
+      "categoria_id": 1,
+      "metodos": [
+        "goteo",
+        "filtro",
+        "prensa"
+      ],
+      "peso_kg": 0.55,
+      "variante_nombre": "Molienda",
+      "variantes": [
+        "Grano entero",
+        "Molido para espresso",
+        "Molido para V60 / Chemex",
+        "Molido para prensa francesa",
+        "Molido para cafetera de goteo"
+      ]
     },
     {
       "id": 4,
@@ -74,7 +117,11 @@
       "imagenes": [
         "https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&q=80"
       ],
-      "categoria_id": 2
+      "categoria_id": 2,
+      "metodos": [
+        "espresso"
+      ],
+      "peso_kg": 1.1
     },
     {
       "id": 5,
@@ -86,7 +133,12 @@
       "imagenes": [
         "https://images.unsplash.com/photo-1576186726115-4d51596775d1?auto=format&fit=crop&q=80"
       ],
-      "categoria_id": 2
+      "categoria_id": 2,
+      "metodos": [
+        "espresso",
+        "frio"
+      ],
+      "peso_kg": 1.1
     },
     {
       "id": 6,
@@ -98,7 +150,12 @@
       "imagenes": [
         "https://images.unsplash.com/photo-1601436423474-51738541c1b1?auto=format&fit=crop&q=80"
       ],
-      "categoria_id": 2
+      "categoria_id": 2,
+      "metodos": [
+        "espresso",
+        "frio"
+      ],
+      "peso_kg": 1.1
     },
     {
       "id": 7,
@@ -111,7 +168,11 @@
         "https://images.unsplash.com/photo-1704079698754-5e621edb610b?auto=format&fit=crop&q=80",
         "https://images.unsplash.com/photo-1566373049939-704ea187ef98?auto=format&fit=crop&q=80"
       ],
-      "categoria_id": 3
+      "categoria_id": 3,
+      "metodos": [
+        "batido"
+      ],
+      "peso_kg": 0.1
     },
     {
       "id": 8,
@@ -123,7 +184,12 @@
       "imagenes": [
         "https://images.unsplash.com/photo-1515823064-d6e0c04616a7?auto=format&fit=crop&q=80"
       ],
-      "categoria_id": 3
+      "categoria_id": 3,
+      "metodos": [
+        "batido",
+        "frio"
+      ],
+      "peso_kg": 0.25
     },
     {
       "id": 9,
@@ -136,7 +202,12 @@
         "https://images.unsplash.com/photo-1639906512494-dd4a536abc4e?auto=format&fit=crop&q=80",
         "https://images.unsplash.com/photo-1764088356864-6b8b717d6f88?auto=format&fit=crop&q=80"
       ],
-      "categoria_id": 4
+      "categoria_id": 4,
+      "metodos": [
+        "prensa",
+        "frio"
+      ],
+      "peso_kg": 0.9
     }
   ],
   "usuarios": [

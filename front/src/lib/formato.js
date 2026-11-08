@@ -15,6 +15,8 @@ export const pesos = (n) =>
 /** Rutas del sitio en un solo lugar, para no escribir URLs sueltas. */
 export const RUTAS = {
   inicio: "/",
+  tienda: "/tienda",
+  tiendaMetodo: (metodo) => `/tienda?metodo=${encodeURIComponent(metodo)}`,
   categoria: (id) => `/categoria?id=${id}`,
   carrito: "/carrito",
   checkout: "/checkout",
@@ -30,6 +32,8 @@ export const RUTAS = {
   adminMembresias: "/admin/membresias",
   adminCaja: "/admin/caja",
   adminClientes: "/admin/clientes",
+  adminRecompras: "/admin/recompras",
+  adminIntegraciones: "/admin/integraciones",
   login: (siguiente) =>
     siguiente ? `/login?siguiente=${encodeURIComponent(siguiente)}` : "/login",
   registro: (siguiente) =>
@@ -51,6 +55,7 @@ export function destinoSeguro(valor, porDefecto = "/cuenta") {
     typeof valor === "string" &&
     valor.startsWith("/") &&
     !/^\/[/\\]/.test(valor) &&
+    // eslint-disable-next-line no-control-regex -- justo buscamos caracteres de control
     !/[\u0000-\u001f\u007f]/.test(valor)
   ) {
     return valor;
@@ -116,6 +121,22 @@ export const ESTADO_MEMBRESIA = {
   vencida: { texto: "Vencida", tono: "neutro" },
   cancelada: { texto: "Cancelada", tono: "error" },
 };
+
+export const ESTADO_SUSCRIPCION = {
+  activa: { texto: "Activa", tono: "ok" },
+  pausada: { texto: "Pausada", tono: "aviso" },
+  cancelada: { texto: "Cancelada", tono: "error" },
+};
+
+export const ESTADO_CORREO = {
+  enviado: { texto: "Enviado", tono: "ok" },
+  simulado: { texto: "Simulado", tono: "info" },
+  error: { texto: "Error", tono: "error" },
+};
+
+/** "/tienda?metodo=prensa" → { metodo: "prensa", ... } sin depender de React. */
+export const leerParametros = (busqueda = typeof window !== "undefined" ? window.location.search : "") =>
+  Object.fromEntries(new URLSearchParams(busqueda));
 
 /** "2026-10-15 08:31:00" → "08:31" */
 export const hora = (texto) => {

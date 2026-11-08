@@ -3,6 +3,7 @@ import { useStore } from "../../store/useStore";
 import { RUTAS, fechaCorta, fechaLarga, pesos } from "../../lib/formato";
 import { Skeleton } from "./Skeleton";
 import { EstadoMembresia, EstadoPago, EstadoPedido } from "./Insignia";
+import MisRecompras from "./MisRecompras";
 
 const QUERY_MIS_PEDIDOS = `
   query MisPedidos {
@@ -125,6 +126,8 @@ export default function Cuenta() {
 
       <TarjetaMembresia omitir={!sesion} />
 
+      <MisRecompras />
+
       <h2>Tus pedidos</h2>
 
       {loading && (
@@ -144,7 +147,7 @@ export default function Cuenta() {
 
       {!loading && !error && pedidos.length === 0 && (
         <p className="cf-vacio">
-          Todavía no tienes pedidos. <a className="cf-link" href={RUTAS.inicio}>Ve al catálogo</a>.
+          Todavía no tienes pedidos. <a className="cf-link" href={RUTAS.tienda}>Ve a la tienda</a>.
         </p>
       )}
 

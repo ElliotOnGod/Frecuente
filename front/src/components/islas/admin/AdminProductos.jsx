@@ -9,11 +9,12 @@ import SoloAdmin from "./SoloAdmin";
 const QUERY = `
   query Inventario {
     categorias { id nombre }
-    productos { id nombre descripcion precio stock imagenUrl imagenes categoriaId }
+    metodosPreparacion { clave nombre }
+    productos { id nombre descripcion precio stock imagenUrl imagenes categoriaId varianteNombre variantes metodos pesoKg }
   }
 `;
 
-const CAMPOS = "id nombre descripcion precio stock imagenUrl imagenes categoriaId";
+const CAMPOS = "id nombre descripcion precio stock imagenUrl imagenes categoriaId varianteNombre variantes metodos pesoKg";
 
 const MUTATION_CREAR = `
   mutation Crear($input: ProductoInput!) { crearProducto(input: $input) { ${CAMPOS} } }
@@ -28,7 +29,14 @@ const MUTATION_ELIMINAR = `
 `;
 
 const STOCK_BAJO = 10;
-const VACIO = { nombre: "", descripcion: "", precio: "", stock: "", categoriaId: "" };
+const VACIO = {
+  nombre: "", descripcion: "", precio: "", stock: "", categoriaId: "",
+  varianteNombre: "Molienda", variantes: "", metodos: [], pesoKg: "0.5",
+};
+
+// Variantes en el formulario: una por línea ("Grano entero", "Molido para espresso"…)
+const SALTO = String.fromCharCode(10);
+const variantesDeTexto = (texto) => texto.split(SALTO).map((v) => v.trim()).filter(Boolean);
 
 function validar(f) {
   const e = {};
@@ -37,6 +45,9 @@ function validar(f) {
   if (f.stock === "" || !Number.isInteger(Number(f.stock)) || Number(f.stock) < 0)
     e.stock = "Un número entero de 0 o más.";
   if (!f.categoriaId) e.categoriaId = "Elige una categoría.";
+  if (f.pesoKg === "" || Number(f.pesoKg) <= 0 || Number(f.pesoKg) > 30)
+    e.pesoKg = "Entre 0.01 y 30 kg (sirve para cotizar el envío).";
+  if (variantesDeTexto(f.variantes).length > 12) e.variantes = "Máximo 12 variantes.";
   return e;
 }
 
@@ -156,7 +167,7 @@ function GestorImagenes({ imagenes, onCambiar, categoriaId, onSubiendo }) {
 }
 
 /** Formulario para crear o editar (en un modal). */
-function FormularioProducto({ producto, categorias, onCerrar, onGuardado }) {
+function FormularioProducto({ producto, categorias, metodos, onCerrar, onGuardado }) {
   const editando = Boolean(producto);
   const [f, setF] = useState(
     editando
@@ -166,6 +177,10 @@ function FormularioProducto({ producto, categorias, onCerrar, onGuardado }) {
           precio: String(producto.precio),
           stock: String(producto.stock),
           categoriaId: String(producto.categoriaId),
+          varianteNombre: producto.varianteNombre || "Molienda",
+          variantes: (producto.variantes ?? []).join(SALTO),
+          metodos: producto.metodos ?? [],
+          pesoKg: String(producto.pesoKg ?? 0.5),
         }
       : { ...VACIO, categoriaId: String(categorias[0]?.id ?? "") }
   );
@@ -200,6 +215,10 @@ function FormularioProducto({ producto, categorias, onCerrar, onGuardado }) {
       stock: Number(f.stock),
       categoriaId: Number(f.categoriaId),
       imagenes,
+      varianteNombre: f.varianteNombre.trim(),
+      variantes: variantesDeTexto(f.variantes),
+      metodos: f.metodos,
+      pesoKg: Number(f.pesoKg),
     };
     try {
       const data = editando
@@ -284,6 +303,52 @@ function FormularioProducto({ producto, categorias, onCerrar, onGuardado }) {
               ))}
             </select>
           </div>
+          {entrada("pesoKg", "Peso con empaque (kg)", { type: "number", min: 0.01, step: "0.05", inputMode: "decimal" })}
+
+          <fieldset className="cf-campo">
+            <legend className="cf-label">Métodos de preparación (filtro de la tienda)</legend>
+            <div className="cf-chips">
+              {metodos.map((m) => {
+                const elegido = f.metodos.includes(m.clave);
+                return (
+                  <button
+                    key={m.clave}
+                    type="button"
+                    className="cf-chip"
+                    aria-pressed={elegido}
+                    onClick={() =>
+                      setF((x) => ({
+                        ...x,
+                        metodos: elegido ? x.metodos.filter((k) => k !== m.clave) : [...x.metodos, m.clave],
+                      }))
+                    }
+                  >
+                    {m.nombre}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+
+          <div className="cf-form-fila">
+            {entrada("varianteNombre", "Nombre de la variante", { placeholder: "Molienda, Tamaño…" })}
+            <div className="cf-campo">
+              <label className="cf-label" htmlFor="prod-variantes">Variantes (una por línea, opcional)</label>
+              <textarea
+                id="prod-variantes"
+                className="cf-input cf-textarea"
+                rows={4}
+                placeholder={`Grano entero${SALTO}Molido para espresso`}
+                value={f.variantes}
+                onChange={campo("variantes")}
+                aria-invalid={errores.variantes ? "true" : undefined}
+              />
+              <span className={`cf-ayuda${errores.variantes ? " cf-ayuda--error" : ""}`}>
+                {errores.variantes ?? "Mismo precio y stock; el cliente elige una al comprar."}
+              </span>
+            </div>
+          </div>
+
           <GestorImagenes
             imagenes={imagenes}
             onCambiar={setImagenes}
@@ -313,12 +378,14 @@ function Contenido() {
   const [editando, setEditando] = useState(undefined); // undefined = cerrado, null = nuevo
   const [borrando, setBorrando] = useState(null);
   const [stockRapido, setStockRapido] = useState({});
+  const [metodos, setMetodos] = useState([]);
 
   useEffect(() => {
     graphqlRequest(QUERY)
       .then((d) => {
         setProductos(d.productos);
         setCategorias(d.categorias);
+        setMetodos(d.metodosPreparacion);
       })
       .catch((e) => setError(e.message));
   }, []);
@@ -492,6 +559,7 @@ function Contenido() {
         <FormularioProducto
           producto={editando}
           categorias={categorias}
+          metodos={metodos}
           onCerrar={() => setEditando(undefined)}
           onGuardado={guardado}
         />

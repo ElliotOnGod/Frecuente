@@ -5,6 +5,9 @@ main.py — servidor FastAPI que expone un único endpoint GraphQL.
     WS   /graphql                 Subscriptions en tiempo real (graphql-transport-ws)
     GET  /imagenes/<id>           fotos de productos subidas desde el panel
     POST /webhooks/mercadopago    avisos de pago de Mercado Pago (opcional)
+    POST /mcp                     servidor MCP para agentes de IA (servidor_mcp.py)
+    POST /tareas/recompras        genera los pedidos de recompra (para un cron)
+    GET  /salud                   revisión de salud (Render la usa para saber si está vivo)
 
 Levantar:  uvicorn main:app --reload --port 8000
 
@@ -14,26 +17,66 @@ Equipo: Jehu Uribe Bermudez (23100139),
 Materia: Programacion Web II - CETI Colomos
 """
 
+import asyncio
+import hmac
+import os
 import re
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from strawberry.fastapi import GraphQLRouter
 
 import pagos
+import relacional
+import servidor_mcp
 from database import db, init_db
-from schema import _aplicar_resultado_pago, _aplicar_resultado_pago_membresia, schema
+from schema import _aplicar_resultado_pago, _aplicar_resultado_pago_membresia, procesar_recompras, schema
 
-# Crea las colecciones en MongoDB y carga datos_ejemplo.json si está vacía
+# Prepara MongoDB (catálogo) y PostgreSQL (usuarios, pedidos…) y carga los
+# datos de ejemplo si están vacías
 init_db()
 
-app = FastAPI(title="Frecuente API", version="0.4")
+# Orígenes que pueden llamar a la API desde el navegador. En producción:
+#   CORS_ORIGENES=https://frecuente.netlify.app
+# Sin la variable se permite cualquiera (cómodo para desarrollo).
+CORS_ORIGENES = [o.strip().rstrip("/") for o in os.getenv("CORS_ORIGENES", "").split(",") if o.strip()]
+CRON_SECRET = os.getenv("CRON_SECRET", "").strip()
+RECOMPRAS_AUTOMATICAS = os.getenv("RECOMPRAS_AUTOMATICAS", "1") != "0"
+RECOMPRAS_CADA_MINUTOS = int(os.getenv("RECOMPRAS_CADA_MINUTOS", "60"))
+
+mcp_app = servidor_mcp.app_http()
+
+
+async def _ciclo_recompras():
+    """Cada hora revisa si a alguna suscripción ya le toca su pedido."""
+    while True:
+        try:
+            await asyncio.to_thread(procesar_recompras)
+        except Exception as e:  # que un error no apague el ciclo
+            print(f"[frecuente] Recompras: {e}")
+        await asyncio.sleep(RECOMPRAS_CADA_MINUTOS * 60)
+
+
+@asynccontextmanager
+async def ciclo_de_vida(app: FastAPI):
+    tarea = asyncio.create_task(_ciclo_recompras()) if RECOMPRAS_AUTOMATICAS else None
+    # El servidor MCP necesita su administrador de sesiones corriendo
+    async with servidor_mcp.mcp.session_manager.run():
+        yield
+    if tarea:
+        tarea.cancel()
+    relacional.pool.close()
+
+
+app = FastAPI(title="Frecuente API", version="0.5", lifespan=ciclo_de_vida)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # en el avance se deja abierto para el front en Astro
+    allow_origins=CORS_ORIGENES or ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Mcp-Session-Id"],
 )
 
 def _router():
@@ -41,11 +84,23 @@ def _router():
     antes graphiql=True, ahora graphql_ide="graphiql". Soporta ambas.
 
     El mismo router atiende las Subscriptions por WebSocket en /graphql
-    (protocolos graphql-transport-ws y graphql-ws, los dos vienen activos)."""
-    try:
-        return GraphQLRouter(schema, graphql_ide="graphiql")
-    except TypeError:
-        return GraphQLRouter(schema, graphiql=True)
+    (protocolos graphql-transport-ws y graphql-ws, los dos vienen activos).
+
+    Los navegadores no aplican CORS al WebSocket, así que Strawberry (desde
+    la 0.34x) revisa el encabezado Origin: se permiten los mismos orígenes
+    que CORS. Nuestra sesión viaja en connection_init (no en cookies), así
+    que en desarrollo, sin CORS_ORIGENES, se aceptan todos."""
+    origenes = CORS_ORIGENES or ["*"]
+    for opciones in (
+        {"graphql_ide": "graphiql", "allowed_origins": origenes},
+        {"graphql_ide": "graphiql"},
+        {"graphiql": True},
+    ):
+        try:
+            return GraphQLRouter(schema, **opciones)
+        except TypeError:
+            continue
+    raise RuntimeError("Versión de Strawberry no soportada")
 
 
 app.include_router(_router(), prefix="/graphql")
@@ -53,7 +108,27 @@ app.include_router(_router(), prefix="/graphql")
 
 @app.get("/")
 def raiz():
-    return {"api": "Frecuente", "graphql": "/graphql", "pagos": pagos.PAGOS_MODO}
+    return {"api": "Frecuente", "graphql": "/graphql", "mcp": "/mcp", "pagos": pagos.PAGOS_MODO}
+
+
+@app.get("/salud")
+def salud():
+    """Revisa que las DOS bases respondan."""
+    db.command("ping")
+    with relacional.transaccion() as con:
+        con.execute("SELECT 1")
+    return {"ok": True, "mongo": "ok", "postgres": "ok"}
+
+
+@app.post("/tareas/recompras")
+def tarea_recompras(request: Request):
+    """Para un cron externo (por ejemplo el workflow programado de GitHub
+    Actions): genera los pedidos de recompra del día. Pide la clave
+    CRON_SECRET en el encabezado X-Cron-Secret."""
+    clave = request.headers.get("x-cron-secret", "")
+    if not CRON_SECRET or not hmac.compare_digest(clave, CRON_SECRET):
+        raise HTTPException(status_code=401, detail="Clave de cron inválida")
+    return {"ok": True, "pedidos": procesar_recompras()}
 
 
 @app.get("/imagenes/{imagen_id}")
@@ -116,9 +191,13 @@ async def webhook_mercadopago(request: Request):
                 cargo = pagos.cargo_membresia({**membresia, "total": membresia["precio"]}, plan["nombre"])
                 _aplicar_resultado_pago_membresia(membresia, pagos.mp_consultar(cargo, pago_id))
         elif status < 300 and ref.isdigit():
-            pedido = db.pedidos.find_one({"_id": int(ref)})
+            pedido = relacional.pedido(int(ref))
             if pedido and (pedido.get("pago") or {}).get("metodo") == "mercadopago":
                 _aplicar_resultado_pago(pedido, pagos.mp_consultar(pedido, pago_id))
     except (pagos.ErrorPago, ValueError, TypeError):
         pass
     return {"ok": True}
+
+
+# El servidor MCP va al final: atiende /mcp y nada de lo de arriba
+app.mount("/", mcp_app)

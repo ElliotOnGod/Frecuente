@@ -5,7 +5,29 @@ import { usePedidoPendiente } from "../../hooks/usePedidoPendiente";
 import { useStore } from "../../store/useStore";
 import { pesos, RUTAS } from "../../lib/formato";
 import { CAMPOS_PEDIDO, QUERY_METODOS, cancelarMiPedido, irAPagar } from "../../lib/pagos";
+import { claveDe, itemsParaApi, subtotalDe } from "../../lib/carrito";
+import { DIRECCION_VACIA, entregaParaApi, faltantes } from "../../lib/envios";
+import EntregaForm from "./EntregaForm";
 import { Skeleton } from "./Skeleton";
+
+// Última dirección usada: comodidad de este navegador, no un dato importante
+const LLAVE_DIRECCION = "frecuente-direccion";
+function direccionGuardada(usuario) {
+  try {
+    const guardada = JSON.parse(window.localStorage.getItem(LLAVE_DIRECCION) || "null");
+    if (guardada) return { ...DIRECCION_VACIA, ...guardada };
+  } catch {
+    // sin almacenamiento (modo privado): se empieza vacío
+  }
+  return { ...DIRECCION_VACIA, nombre: usuario?.nombre ?? "", telefono: usuario?.telefono ?? "" };
+}
+function guardarDireccion(direccion) {
+  try {
+    window.localStorage.setItem(LLAVE_DIRECCION, JSON.stringify(direccion));
+  } catch {
+    // no pasa nada si no se puede guardar
+  }
+}
 
 const MUTATION_PEDIDO = `
   mutation RegistrarPedido($input: PedidoInput!) {
@@ -14,8 +36,10 @@ const MUTATION_PEDIDO = `
 `;
 
 /**
- * Checkout — resume el pedido, deja elegir el método de pago y:
- *  1. registra el pedido (registrarPedido: valida y aparta el stock)
+ * Checkout — resume el pedido, deja elegir la entrega (recoger o envío a
+ * domicilio con Envia.com), el método de pago y si se repite cada mes, y:
+ *  1. registra el pedido (registrarPedido: valida y aparta el stock; el
+ *     costo del envío lo pone el servidor con la cotización firmada)
  *  2. inicia el cobro (iniciarPago) y manda a la pasarela o a las instrucciones.
  * Pide sesión: el backend toma al usuario del token, no del formulario.
  *
@@ -33,7 +57,7 @@ function PedidoSinPagar({ pedido }) {
   const cambio =
     items != null &&
     (items.length !== carrito.length ||
-      items.some((p) => carrito.find((i) => i.id === p.id)?.cantidad !== p.cantidad));
+      items.some((p) => carrito.find((i) => claveDe(i) === (p.clave ?? `${p.id}|`))?.cantidad !== p.cantidad));
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState(null);
 
@@ -111,24 +135,48 @@ export default function Checkout() {
   const [metodo, setMetodo] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState(null);
+  const [entrega, setEntrega] = useState(() => ({
+    tipo: "recoger",
+    direccion: direccionGuardada(sesion?.usuario),
+    opcion: null,
+  }));
+  const [recompra, setRecompra] = useState({ activa: false, dias: 30 });
 
-  // Selecciona el primer método en cuanto llegan
+  const aDomicilio = entrega.tipo === "domicilio";
+  // Efectivo es solo al recoger; la recompra se paga en línea o por transferencia
+  const disponibles = metodos.filter(
+    (m) => !(m.clave === "efectivo" && (aDomicilio || recompra.activa))
+  );
+
+  // Selecciona el primer método disponible (y cambia si el elegido ya no aplica)
   useEffect(() => {
-    if (!metodo && metodos.length) setMetodo(metodos[0].clave);
-  }, [metodos, metodo]);
+    if (disponibles.length && !disponibles.some((m) => m.clave === metodo)) setMetodo(disponibles[0].clave);
+  }, [disponibles, metodo]);
 
-  const total = carrito.reduce((acc, i) => acc + i.precio * i.cantidad, 0);
-  const elegido = metodos.find((m) => m.clave === metodo);
+  const items = itemsParaApi(carrito);
+  const subtotal = subtotalDe(carrito);
+  const costoEnvio = aDomicilio ? entrega.opcion?.costo ?? 0 : 0;
+  const total = Math.round((subtotal + costoEnvio) * 100) / 100;
+  const elegido = disponibles.find((m) => m.clave === metodo);
+  const faltaEntrega = aDomicilio
+    ? [...faltantes(entrega.direccion), ...(entrega.opcion ? [] : ["paquetería"])]
+    : [];
 
   const confirmar = async () => {
+    if (faltaEntrega.length) {
+      setError(`Completa la entrega: ${faltaEntrega.join(", ")}`);
+      return;
+    }
     setEnviando(true);
     setError(null);
     let pedido;
     try {
       const res = await graphqlRequest(MUTATION_PEDIDO, {
         input: {
-          items: carrito.map((i) => ({ productoId: i.id, cantidad: i.cantidad })),
+          items,
           metodoPago: metodo,
+          entrega: entregaParaApi(entrega.tipo, entrega.direccion, entrega.opcion),
+          recompraCadaDias: recompra.activa ? recompra.dias : null,
         },
       });
       pedido = res.registrarPedido;
@@ -137,6 +185,7 @@ export default function Checkout() {
       setEnviando(false);
       return;
     }
+    if (aDomicilio) guardarDireccion(entrega.direccion);
 
     // El pedido ya existe; el carrito se conserva hasta que se apruebe el pago
     completeCheckout(pedido);
@@ -211,6 +260,9 @@ export default function Checkout() {
       )}
 
       <div className="cf-checkout">
+        <div className="cf-checkout__pasos">
+        <EntregaForm valor={entrega} onCambio={setEntrega} items={items} />
+
         <section className="cf-panel" aria-labelledby="titulo-metodo">
           <h2 id="titulo-metodo" className="cf-panel__titulo">Método de pago</h2>
 
@@ -230,7 +282,7 @@ export default function Checkout() {
           {!loading && metodos.length > 0 && (
             <fieldset className="cf-metodos">
               <legend className="cf-sr">Elige cómo quieres pagar</legend>
-              {metodos.map((m) => (
+              {disponibles.map((m) => (
                 <label
                   key={m.clave}
                   className="cf-metodo"
@@ -267,7 +319,43 @@ export default function Checkout() {
                   : "Apartamos tus productos y pagas en el local al recogerlos con tu referencia."}
             </p>
           )}
+          {aDomicilio && (
+            <p className="cf-caption">El pago en efectivo solo aplica al recoger en el local.</p>
+          )}
         </section>
+
+        <section className="cf-panel" aria-labelledby="titulo-recompra">
+          <h2 id="titulo-recompra" className="cf-panel__titulo">Recompra automática</h2>
+          <label className="cf-check">
+            <input
+              type="checkbox"
+              checked={recompra.activa}
+              onChange={(e) => setRecompra((r) => ({ ...r, activa: e.target.checked }))}
+            />
+            <span>Repetir este pedido automáticamente</span>
+          </label>
+          {recompra.activa && (
+            <div className="cf-campo" style={{ marginTop: "var(--espacio-sm)" }}>
+              <label className="cf-label" htmlFor="recompra-dias">Cada cuánto</label>
+              <select
+                id="recompra-dias"
+                className="cf-input"
+                value={recompra.dias}
+                onChange={(e) => setRecompra((r) => ({ ...r, dias: Number(e.target.value) }))}
+              >
+                <option value={15}>Cada 15 días</option>
+                <option value={30}>Cada mes (30 días)</option>
+                <option value={60}>Cada 2 meses (60 días)</option>
+              </select>
+            </div>
+          )}
+          <p className="cf-ayuda">
+            {recompra.activa
+              ? `Cada ${recompra.dias} días generamos este mismo pedido y te mandamos un correo con el enlace para pagarlo. Puedes pausarlo o cancelarlo en Mi cuenta.`
+              : "Ideal para tu café de siempre: no guardamos tu tarjeta, solo te recordamos y preparamos el pedido."}
+          </p>
+        </section>
+        </div>
 
         <section className="cf-panel" aria-labelledby="titulo-resumen">
           <h2 id="titulo-resumen" className="cf-panel__titulo">Tu pedido</h2>
@@ -281,8 +369,11 @@ export default function Checkout() {
             </thead>
             <tbody>
               {carrito.map((i) => (
-                <tr key={i.id}>
-                  <td>{i.nombre}</td>
+                <tr key={claveDe(i)}>
+                  <td>
+                    {i.nombre}
+                    {i.variante && <span className="cf-caption cf-bloque">{i.variante}</span>}
+                  </td>
                   <td className="cf-num">{i.cantidad}</td>
                   <td className="cf-num">{pesos(i.precio * i.cantidad)}</td>
                 </tr>
@@ -290,12 +381,22 @@ export default function Checkout() {
             </tbody>
           </table>
 
+          <dl className="cf-totales">
+            <div><dt>Productos</dt><dd>{pesos(subtotal)}</dd></div>
+            <div>
+              <dt>Envío</dt>
+              <dd>
+                {!aDomicilio ? "Recoges en el local" : entrega.opcion ? pesos(costoEnvio) : "Por cotizar"}
+              </dd>
+            </div>
+          </dl>
+
           <div className="cf-resumen">
             <span className="cf-total">Total: {pesos(total)}</span>
             <button
               className="cf-btn"
               onClick={confirmar}
-              disabled={enviando || !metodo}
+              disabled={enviando || !metodo || (aDomicilio && !entrega.opcion)}
             >
               {textoBoton}
             </button>

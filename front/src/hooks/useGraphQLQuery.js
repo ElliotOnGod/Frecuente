@@ -43,6 +43,8 @@ export function useGraphQLQuery(query, variables = {}, { omitir = false, recarga
     return () => {
       vigente = false;
     };
+    // `clave` es `variables` en texto: así no se repite la petición en cada render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, clave, omitir, recarga]);
 
   return { data, loading, error };

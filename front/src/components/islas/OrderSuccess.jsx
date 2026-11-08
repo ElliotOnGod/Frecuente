@@ -7,6 +7,7 @@ import { fechaCorta, pesos, RUTAS } from "../../lib/formato";
 import { QUERY_METODOS, QUERY_PEDIDO, SUB_SEGUIR_PEDIDO, cancelarMiPedido, confirmarPago, irAPagar } from "../../lib/pagos";
 import { EstadoPago, EstadoPedido, IndicadorEnVivo } from "./Insignia";
 import { Skeleton } from "./Skeleton";
+import EntregaPedido from "./EntregaPedido";
 
 /** Mensaje principal según el estado del pedido y de su pago. */
 function Aviso({ pedido }) {
@@ -26,7 +27,9 @@ function Aviso({ pedido }) {
       <p className="cf-alerta cf-alerta--success" role="status">
         <span className="cf-icon" aria-hidden="true">✓</span>
         {pago ? "Pago aprobado. " : "Pedido registrado. "}
-        Te escribimos por correo para coordinar la entrega.
+        {pedido.entrega?.tipo === "domicilio"
+          ? "Te mandamos un correo con la confirmación y otro con el número de guía cuando salga."
+          : "Te mandamos la confirmación por correo. Te esperamos en el local."}
       </p>
     );
   }
@@ -136,7 +139,7 @@ export default function OrderSuccess() {
       <>
         <h1>Sin pedidos recientes</h1>
         <p className="cf-vacio">Aquí verás la confirmación cuando registres un pedido.</p>
-        <a className="cf-btn" href={RUTAS.inicio}>Ver el catálogo</a>
+        <a className="cf-btn" href={RUTAS.tienda}>Ver la tienda</a>
       </>
     );
   }
@@ -179,7 +182,10 @@ export default function OrderSuccess() {
 
   const pago = pedido.pago;
   const porPagar = pedido.estado === "registrado" && pago && pago.estado !== "aprobado";
-  const metodos = (dataMetodos?.metodosPago ?? []).filter((m) => m.clave !== pago?.metodo);
+  const aDomicilio = pedido.entrega?.tipo === "domicilio";
+  const metodos = (dataMetodos?.metodosPago ?? []).filter(
+    (m) => m.clave !== pago?.metodo && !(aDomicilio && m.clave === "efectivo")
+  );
 
   const pagar = async (metodo = null) => {
     setOcupado(true);
@@ -245,6 +251,16 @@ export default function OrderSuccess() {
           </div>
         </div>
       )}
+
+      {pedido.suscripcionId && (
+        <p className="cf-alerta" role="note">
+          <span className="cf-icon" aria-hidden="true">↻</span>
+          Este pedido es parte de tu recompra automática. Puedes pausarla o cancelarla en{" "}
+          <a className="cf-link" href={RUTAS.cuenta}>Mi cuenta</a>.
+        </p>
+      )}
+
+      <EntregaPedido pedido={pedido} />
 
       {porPagar && pago.instrucciones.length > 0 && (
         <section className="cf-panel cf-instrucciones" aria-labelledby="titulo-instr">
@@ -339,7 +355,10 @@ export default function OrderSuccess() {
           <tbody>
             {pedido.items?.map((item, i) => (
               <tr key={i}>
-                <td>{item.producto?.nombre}</td>
+                <td>
+                  {item.nombre}
+                  {item.variante && <span className="cf-caption cf-bloque">{item.variante}</span>}
+                </td>
                 <td className="cf-num">{item.cantidad}</td>
                 <td className="cf-num">{pesos(item.subtotal)}</td>
               </tr>
@@ -347,6 +366,12 @@ export default function OrderSuccess() {
           </tbody>
         </table>
 
+        {pedido.costoEnvio > 0 && (
+          <dl className="cf-totales">
+            <div><dt>Productos</dt><dd>{pesos(pedido.subtotal)}</dd></div>
+            <div><dt>Envío</dt><dd>{pesos(pedido.costoEnvio)}</dd></div>
+          </dl>
+        )}
         <div className="cf-resumen">
           <span className="cf-total">Total: {pesos(pedido.total ?? 0)}</span>
           <div className="cf-acciones">

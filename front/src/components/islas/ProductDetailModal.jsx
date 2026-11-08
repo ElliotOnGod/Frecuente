@@ -6,10 +6,38 @@ import { Skeleton } from "./Skeleton";
 import { pesos, RUTAS } from "../../lib/formato";
 import Foto from "./Foto";
 
+const NOMBRE_METODO = {
+  espresso: "Espresso y latte",
+  filtro: "V60 / Chemex",
+  prensa: "Prensa francesa",
+  goteo: "Cafetera de goteo",
+  frio: "Bebidas frías",
+  batido: "Matcha batido",
+};
+
+/** Variantes (molienda) como botones de opción: mismo precio y stock. */
+function SelectorVariante({ producto, valor, onElegir }) {
+  if (!producto.variantes?.length) return null;
+  return (
+    <fieldset className="cf-variantes">
+      <legend className="cf-label">{producto.varianteNombre || "Presentación"}</legend>
+      <div className="cf-chips">
+        {producto.variantes.map((v) => (
+          <label key={v} className="cf-chip" data-elegido={valor === v ? "true" : undefined}>
+            <input type="radio" name="variante" value={v} checked={valor === v} onChange={() => onElegir(v)} />
+            {v}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
 const QUERY_PRODUCTO = `
   query Producto($id: Int!) {
     producto(id: $id) {
       id nombre descripcion precio stock categoriaId imagenUrl imagenes
+      varianteNombre variantes metodos pesoKg
       categoria { nombre }
     }
   }
@@ -65,6 +93,7 @@ export default function ProductDetailModal() {
   const agregarAlCarrito = useStore((s) => s.agregarAlCarrito);
   const [cantidad, setCantidad] = useState(1);
   const [foto, setFoto] = useState(0);
+  const [variante, setVariante] = useState("");
 
   const { data, loading, error } = useGraphQLQuery(
     QUERY_PRODUCTO,
@@ -76,7 +105,13 @@ export default function ProductDetailModal() {
   useEffect(() => {
     setCantidad(1);
     setFoto(0);
+    setVariante("");
   }, [id]);
+
+  // Al cargar, la primera variante queda elegida (ej. "Grano entero")
+  useEffect(() => {
+    if (producto?.variantes?.length && !producto.variantes.includes(variante)) setVariante(producto.variantes[0]);
+  }, [producto, variante]);
 
   useEffect(() => {
     const onEsc = (e) => e.key === "Escape" && closeProduct();
@@ -89,12 +124,12 @@ export default function ProductDetailModal() {
   const agotado = producto ? producto.stock <= 0 : false;
 
   const agregar = () => {
-    agregarAlCarrito(producto, cantidad);
+    agregarAlCarrito(producto, cantidad, variante);
     closeProduct();
   };
 
   const comprarAhora = () => {
-    agregarAlCarrito(producto, cantidad);
+    agregarAlCarrito(producto, cantidad, variante);
     closeProduct();
     window.location.href = RUTAS.carrito;
   };
@@ -139,11 +174,21 @@ export default function ProductDetailModal() {
             <div>
               <p className="cf-caption">{producto.categoria?.nombre}</p>
               <p>{producto.descripcion}</p>
+              {producto.metodos?.length > 0 && (
+                <p className="cf-metodos-prep">
+                  <span className="cf-caption">Ideal para: </span>
+                  {producto.metodos.map((m) => (
+                    <a key={m} className="cf-etiqueta" href={RUTAS.tiendaMetodo(m)}>{NOMBRE_METODO[m] ?? m}</a>
+                  ))}
+                </p>
+              )}
               <p className="cf-card__precio">{pesos(producto.precio)}</p>
 
               <span className={`cf-insignia${agotado ? " cf-insignia--agotado" : ""}`}>
                 {agotado ? "Agotado" : `${producto.stock} disponibles`}
               </span>
+
+              <SelectorVariante producto={producto} valor={variante} onElegir={setVariante} />
 
               <div className="cf-campo" style={{ marginTop: "var(--espacio-md)" }}>
                 <label className="cf-label" htmlFor="cantidad">Cantidad</label>

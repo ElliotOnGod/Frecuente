@@ -7,11 +7,16 @@ import { NOMBRE_METODO, fechaCorta, pesos } from "../../../lib/formato";
 import { EstadoPago, EstadoPedido } from "../Insignia";
 import { Skeleton } from "../Skeleton";
 import SoloAdmin from "./SoloAdmin";
+import EntregaPedido from "../EntregaPedido";
 
 const CAMPOS = `
-  id fecha estado total referencia piezas
+  id fecha estado subtotal costoEnvio total referencia piezas suscripcionId
   usuario { nombre email telefono }
-  items { cantidad precioUnit subtotal producto { nombre } }
+  items { nombre variante cantidad precioUnit subtotal }
+  entrega {
+    tipo nombre telefono calle numero colonia ciudad estado cp referencias
+    paqueteria descripcion dias costo modo guia rastreoUrl etiquetaUrl
+  }
   pago { metodo metodoNombre estado modo referencia pagoId detalle fechaPago }
 `;
 
@@ -30,6 +35,10 @@ const MUTATION_ESTADO = `
   }
 `;
 
+const MUTATION_GUIA = `
+  mutation GenerarGuia($id: Int!) { generarGuia(id: $id) { ${CAMPOS} } }
+`;
+
 const MUTATION_REEMBOLSO = `
   mutation Reembolsado($id: Int!) { marcarReembolsado(id: $id) { ${CAMPOS} } }
 `;
@@ -42,6 +51,7 @@ const FILTROS = [
   { valor: "entregado", texto: "Entregados" },
   { valor: "cancelado", texto: "Cancelados" },
   { valor: "por_reembolsar", texto: "Por reembolsar" },
+  { valor: "recompra", texto: "De recompras" },
 ];
 
 const POR_PAGINA = 15;
@@ -49,6 +59,7 @@ const POR_PAGINA = 15;
 /** Acciones posibles según el estado (igual que TRANSICIONES en el backend). */
 function accionesDe(p) {
   const efectivo = p.pago?.metodo === "efectivo";
+  const aDomicilio = p.entrega?.tipo === "domicilio";
   switch (p.estado) {
     case "registrado":
       return [
@@ -59,8 +70,9 @@ function accionesDe(p) {
       ];
     case "pagado":
       return [
-        { estado: "enviado", texto: "Marcar como enviado" },
-        { estado: "entregado", texto: "Entregado en el local" },
+        aDomicilio
+          ? { estado: "enviado", texto: p.entrega.guia ? "Marcar como enviado" : "Enviar (genera la guía)" }
+          : { estado: "entregado", texto: "Entregado en el local" },
         { estado: "cancelado", texto: "Cancelar y reembolsar", peligro: true },
       ];
     case "enviado":
@@ -161,14 +173,43 @@ function Detalle({ pedido, onCerrar, onActualizado }) {
           <tbody>
             {pedido.items.map((it, i) => (
               <tr key={i}>
-                <td>{it.producto?.nombre}</td>
+                <td>
+                  {it.nombre}
+                  {it.variante && <span className="cf-caption cf-bloque">{it.variante}</span>}
+                </td>
                 <td className="cf-num">{it.cantidad}</td>
                 <td className="cf-num">{pesos(it.subtotal)}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        <p className="cf-total" style={{ textAlign: "right" }}>Total: {pesos(pedido.total)}</p>
+        <p className="cf-total" style={{ textAlign: "right" }}>
+          {pedido.costoEnvio > 0 && (
+            <span className="cf-caption cf-bloque">
+              Productos {pesos(pedido.subtotal)} + envío {pesos(pedido.costoEnvio)}
+            </span>
+          )}
+          Total: {pesos(pedido.total)}
+        </p>
+
+        {pedido.suscripcionId && <p className="cf-caption">↻ Generado por una recompra automática</p>}
+
+        <EntregaPedido pedido={pedido} conRastreo={false} />
+        {pedido.entrega?.tipo === "domicilio" && (
+          <div className="cf-acciones cf-acciones--envolver" style={{ marginBottom: "var(--espacio-md)" }}>
+            {pedido.entrega.etiquetaUrl && (
+              <a className="cf-btn cf-btn--secundario" href={pedido.entrega.etiquetaUrl} target="_blank" rel="noopener noreferrer">
+                Imprimir etiqueta
+              </a>
+            )}
+            {!pedido.entrega.guia && ["pagado", "enviado"].includes(pedido.estado) && (
+              <button className="cf-btn cf-btn--secundario" disabled={ocupado}
+                onClick={() => ejecutar(MUTATION_GUIA, { id: pedido.id })}>
+                Generar guía sin enviar todavía
+              </button>
+            )}
+          </div>
+        )}
 
         {(acciones.length > 0 || pago?.estado === "por_reembolsar") && (
           <div className="cf-detalle__acciones">
