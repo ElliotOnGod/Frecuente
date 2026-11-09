@@ -37,6 +37,7 @@ import json
 import os
 import re
 import time
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -49,7 +50,10 @@ load_dotenv(Path(__file__).resolve().parent / ".env")
 ENVIA_TOKEN = os.getenv("ENVIA_TOKEN", "").strip()
 ENVIA_API = os.getenv("ENVIA_API", "https://api-test.envia.com").rstrip("/")
 ENVIA_GEOCODES = "https://geocodes.envia.com"
-PAQUETERIAS = [p.strip() for p in os.getenv("ENVIA_PAQUETERIAS", "estafeta,fedex,dhl").split(",") if p.strip()]
+# En el sandbox de Envia, Estafeta solo cotiza (al generar la guía responde
+# SERVICE_QUOTE_ONLY); FedEx y DHL sí generan guía y etiqueta de prueba.
+_PAQUETERIAS_DEFECTO = "fedex,dhl" if "api-test" in ENVIA_API else "estafeta,fedex,dhl"
+PAQUETERIAS = [p.strip() for p in os.getenv("ENVIA_PAQUETERIAS", _PAQUETERIAS_DEFECTO).split(",") if p.strip()]
 
 # Origen de todos los envíos: el local (mismos datos que el mapa)
 ORIGEN = {
@@ -99,11 +103,23 @@ def modo() -> str:
     return "sandbox" if ENVIA_TOKEN else "simulado"
 
 
+def _sin_acentos(valor):
+    """Envia.com truena ("Malformed UTF-8 characters") si los datos llevan
+    acentos o ñ. Se mandan sin ellos: "Ladrón de Guevara" → "Ladron de Guevara"."""
+    if isinstance(valor, str):
+        return unicodedata.normalize("NFKD", valor).encode("ascii", "ignore").decode()
+    if isinstance(valor, dict):
+        return {k: _sin_acentos(v) for k, v in valor.items()}
+    if isinstance(valor, list):
+        return [_sin_acentos(v) for v in valor]
+    return valor
+
+
 def _http(metodo: str, url: str, cuerpo: dict | None = None, timeout: int = 20) -> tuple[int, dict | list]:
     import urllib.error
     import urllib.request
 
-    datos = json.dumps(cuerpo).encode() if cuerpo is not None else None
+    datos = json.dumps(_sin_acentos(cuerpo)).encode() if cuerpo is not None else None
     req = urllib.request.Request(url, data=datos, method=metodo)
     req.add_header("Accept", "application/json")
     # Cloudflare (delante de Envia) bloquea el User-Agent por defecto de Python
@@ -179,6 +195,21 @@ def _paquete(kg: float, valor: float) -> dict:
     }
 
 
+def _mensaje_envia(status: int, data) -> str:
+    """El motivo que da Envia cuando rechaza una petición."""
+    if isinstance(data, dict):
+        error = data.get("error")
+        if isinstance(error, dict):
+            return str(error.get("message") or error.get("description") or error)[:200]
+        if error:
+            return str(error)[:200]
+        if data.get("description") or data.get("message"):
+            return str(data.get("description") or data.get("message"))[:200]
+        if not data.get("data"):
+            return f"HTTP {status}, sin tarifas"
+    return f"HTTP {status}"
+
+
 def _destino(d: dict) -> dict:
     return {
         "name": d.get("nombre") or "Cliente Frecuente",
@@ -212,19 +243,33 @@ def _cotizar_simulado(destino: dict, kg: float) -> list[dict]:
 
 
 def _cotizar_envia(destino: dict, kg: float, valor: float) -> list[dict]:
+    # Al cotizar todavía no hay calle ni número: Envia los pide, así que se
+    # manda un domicilio genérico en ese CP (el precio depende del CP y el peso).
+    destino_cotizar = {
+        "nombre": "Cliente Frecuente",
+        "telefono": ORIGEN["phone"],
+        "calle": "Domicilio",
+        "numero": "1",
+        "colonia": destino.get("colonia") or "Centro",
+        **{k: v for k, v in destino.items() if v},
+    }
+    errores: list[str] = []
+
     def una(paqueteria: str) -> list[dict]:
         cuerpo = {
             "origin": ORIGEN,
-            "destination": _destino(destino),
+            "destination": _destino(destino_cotizar),
             "packages": [_paquete(kg, valor)],
             "shipment": {"type": 1, "carrier": paqueteria},
             "settings": {"currency": "MXN"},
         }
         try:
             status, data = _http("POST", f"{ENVIA_API}/ship/rate/", cuerpo)
-        except ErrorEnvio:
+        except ErrorEnvio as e:
+            errores.append(f"{paqueteria}: {e}")
             return []
-        if status >= 300 or not isinstance(data, dict):
+        if status >= 300 or not isinstance(data, dict) or not data.get("data"):
+            errores.append(f"{paqueteria}: {_mensaje_envia(status, data)}")
             return []
         return [
             {
@@ -236,13 +281,20 @@ def _cotizar_envia(destino: dict, kg: float, valor: float) -> list[dict]:
             }
             for r in data.get("data") or []
             if r.get("totalPrice") is not None and (r.get("currency") or "MXN") == "MXN"
+            # Solo puerta a puerta: los servicios "ocurre" piden llevar el
+            # paquete a una sucursal y un código de sucursal que no tenemos
+            and not r.get("dropOff") and not r.get("branchType")
+            and "ocurre" not in str(r.get("serviceDescription", "")).lower()
         ]
 
     # Una petición por paquetería, todas al mismo tiempo
     with ThreadPoolExecutor(max_workers=len(PAQUETERIAS) or 1) as ex:
         opciones = [o for lista in ex.map(una, PAQUETERIAS) for o in lista]
     if not opciones:
-        raise ErrorEnvio("Ninguna paquetería pudo cotizar ese destino; revisa la dirección")
+        detalle = "; ".join(errores)[:300]
+        print(f"[frecuente] Envia no cotizó: {detalle}")
+        raise ErrorEnvio(f"Ninguna paquetería pudo cotizar ese destino ({detalle})" if detalle
+                         else "Ninguna paquetería pudo cotizar ese destino; revisa la dirección")
     return opciones
 
 
@@ -331,9 +383,11 @@ def generar_guia(pedido: dict, kg: float) -> dict:
     }
     status, data = _http("POST", f"{ENVIA_API}/ship/generate/", cuerpo, timeout=40)
     filas = data.get("data") if isinstance(data, dict) else None
-    if status >= 300 or not filas:
-        detalle = (data.get("error") or {}).get("message") if isinstance(data, dict) and isinstance(data.get("error"), dict) else ""
-        raise ErrorEnvio(f"Envia.com no generó la guía{': ' + detalle if detalle else ''}")
+    if status >= 300 or not filas or (isinstance(data, dict) and data.get("meta") == "error"):
+        motivo = _mensaje_envia(status, data)
+        if "QUOTE_ONLY" in motivo:
+            motivo = f"{entrega.get('descripcion') or entrega['paqueteria']} solo cotiza en este entorno; usa FedEx o DHL"
+        raise ErrorEnvio(f"Envia.com no generó la guía: {motivo}")
     g = filas[0]
     return {
         "guia": str(g.get("trackingNumber") or ""),
@@ -349,6 +403,21 @@ _PASOS_SIMULADOS = {
         "Pedido pagado; lo estamos preparando", "Guía generada", "Recolectado por la paquetería",
         "En tránsito", "En ruta de entrega", "Entregado",
     ],
+}
+
+
+# Estados de Envia en español (los demás se muestran tal cual)
+_ESTADOS_ENVIA = {
+    "created": "Guía creada",
+    "pending": "Pendiente de recolección",
+    "picked up": "Recolectado por la paquetería",
+    "shipped": "En tránsito",
+    "in transit": "En tránsito",
+    "out for delivery": "En ruta de entrega",
+    "delivered": "Entregado",
+    "canceled": "Cancelado",
+    "cancelled": "Cancelado",
+    "returned": "Devuelto",
 }
 
 
@@ -369,7 +438,7 @@ def rastrear(pedido: dict) -> dict:
     r = filas[0]
     eventos = r.get("eventHistory") or r.get("events") or []
     return {
-        "estado": str(r.get("status") or r.get("statusName") or "En proceso"),
+        "estado": _ESTADOS_ENVIA.get(str(r.get("status") or "").lower(), str(r.get("status") or r.get("statusName") or "En proceso")),
         "eventos": [
             {
                 "fecha": str(e.get("date") or e.get("datetime") or ""),

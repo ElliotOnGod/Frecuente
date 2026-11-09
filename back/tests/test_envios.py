@@ -91,3 +91,11 @@ def test_codigo_postal_usa_geocodes_de_envia(gql, monkeypatch):
     assert llamadas == ["https://geocodes.envia.com/zipcode/MX/44650"]
     with pytest.raises(ErrorGraphQL, match="5 dígitos"):
         gql('{ buscarCodigoPostal(cp:"44"){ estado } }')
+
+
+def test_a_envia_se_le_mandan_los_datos_sin_acentos():
+    """Envia truena con acentos ("Malformed UTF-8 characters")."""
+    import envios
+
+    limpio = envios._sin_acentos({"colonia": "Ladrón de Guevara", "items": [{"content": "Café y ñoquis"}], "kg": 1.5})
+    assert limpio == {"colonia": "Ladron de Guevara", "items": [{"content": "Cafe y noquis"}], "kg": 1.5}
