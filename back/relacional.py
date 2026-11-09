@@ -63,6 +63,11 @@ pool = ConnectionPool(
     min_size=1,
     max_size=int(os.getenv("PG_POOL_MAX", "10")),
     kwargs={"row_factory": dict_row, "prepare_threshold": None},
+    # Neon apaga la base tras unos minutos sin uso y cierra las conexiones:
+    # antes de prestar una se revisa que siga viva (si no, se abre otra), y
+    # las que llevan 4 minutos sin usarse se cierran solas.
+    check=ConnectionPool.check_connection,
+    max_idle=240,
     open=False,
     timeout=15,
 )
