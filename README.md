@@ -19,9 +19,13 @@ componentes) y **P6** (backend GraphQL, UML de entidades), con la identidad
 visual del **Manual de Identidad Digital — Café Frecuente v1.0**
 (`front/src/styles/theme.css`, sin modificar).
 
-**Producto Integrador:** la documentación de los entregables (propuesta, FODA,
-análisis de mercado, SFW, mapas, diseño y documentación técnica) está en
-[`docs/`](docs/README.md), con una tabla de cómo se cumple cada requisito.
+**Sitio publicado:** <https://frecuente.onrender.com> · **API:**
+<https://frecuente-api.onrender.com/graphql> · **Repositorio:**
+<https://github.com/ElliotOnGod/Frecuente>
+
+**Producto Integrador:** la especificación de requerimientos (SRS) y el
+estudio de viabilidad se entregan como documentos aparte. Los diagramas UML
+están en `docs/` (`uml-componentes.svg` y `uml-entidades.svg`).
 
 | Requisito | Implementación |
 |---|---|
@@ -43,7 +47,7 @@ Se levantan **dos procesos**: el backend en el puerto 8000 y el front (Astro) en
 
 El backend usa **dos bases**: PostgreSQL para usuarios, pedidos, pagos,
 envíos, recompras y correos, y MongoDB para el catálogo, las fotos y las
-membresías (ver [docs/tecnica.md](docs/tecnica.md#persistencia-políglota-por-qué-dos-bases)).
+membresías (ver [Bases de datos](#bases-de-datos)).
 
 **PostgreSQL** (elige una):
 
@@ -285,8 +289,7 @@ frecuente/
 │       ├── hooks/useRecargaEnVivo.js   Recarga una consulta cuando llega un aviso
 │       ├── hooks/usePedidoPendiente.js Pedido sin pagar del carrito (lo sincroniza con el servidor)
 │       └── styles/                     theme.css (manual) + global.css
-└── docs/                   Entregables del PI (propuesta, FODA, mercado, SFW,
-                            mapas, diseño, documentación técnica) y UML en SVG
+└── docs/                   Diagramas UML en SVG (componentes y entidades)
 ```
 
 ## Arquitectura: Astro con islas
@@ -641,6 +644,41 @@ Decisiones de modelado:
   se guarda en el renglón del pedido.
 - **Validación `$jsonSchema`** en cada colección e **índices** en
   `categoria_id` y `metodos`.
+
+## APIs de terceros
+
+| # | API | Uso en la tienda | Modo sin llave |
+|---|---|---|---|
+| 1 | **Mercado Pago** (Checkout Pro) | Cobro con tarjeta, OXXO o saldo | Pasarela simulada |
+| 2 | **PayPal** (Orders v2) | Cobro con cuenta PayPal | Pasarela simulada |
+| 3 | **Envia.com** (`/ship/rate`, `/ship/generate`, `/ship/generaltrack`) | Cotizar envío, generar guía y rastrear | Tabla de precios local y guías `SIM…` |
+| 4 | **Envia Geocodes** | Estado, ciudad y colonias por código postal | Siempre real (API pública) |
+| 5 | **Brevo** (`/v3/smtp/email`) | Correos transaccionales | Se anotan en la bitácora como "simulado" |
+| 6 | **OpenFreeMap + MapLibre** | Mapa interactivo del local | Siempre real (sin API key) |
+
+Todas se llaman desde el backend con las llaves en variables de entorno, salvo
+el mapa, que se carga en el navegador. Si falta una llave o la API falla, esa
+parte sigue funcionando en modo simulado. El panel muestra el estado de cada
+una en **Integraciones**.
+
+### Variables de entorno en producción
+
+Todas están explicadas en `back/.env.example`:
+
+| Variable | Dónde | Para qué |
+|---|---|---|
+| `DATABASE_URL` | Render | PostgreSQL (Neon, con `sslmode=require`) |
+| `MONGO_URI`, `MONGO_DB` | Render | MongoDB Atlas |
+| `JWT_SECRET` | Render | Firma de sesiones, códigos de canje y cotizaciones |
+| `TZ=America/Mexico_City` | Render | El "día" de membresías y recompras |
+| `CORS_ORIGENES` | Render | Dominio del front publicado |
+| `PAGOS_MODO`, `MP_*`, `PAYPAL_*` | Render | Pasarelas de pago |
+| `ENVIA_TOKEN`, `ENVIA_API` | Render | Envíos |
+| `BREVO_API_KEY`, `BREVO_REMITENTE`, `CORREO_TIENDA` | Render | Correos |
+| `CRON_SECRET` | Render + GitHub Secret | `POST /tareas/recompras` |
+| `PUBLIC_API_URL` | Front + GitHub Variable | URL del backend para el front |
+
+Ningún secreto está en el código ni en el repositorio (`.env` está en `.gitignore`).
 
 ## Envíos a domicilio (Envia.com)
 

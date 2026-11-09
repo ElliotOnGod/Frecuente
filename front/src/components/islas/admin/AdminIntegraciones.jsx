@@ -66,7 +66,7 @@ function Contenido() {
           <article className="cf-panel cf-integracion">
             <strong>Servidor MCP (para agentes de IA)</strong>
             <span className="cf-caption">
-              Un asistente como Claude puede consultar el catálogo, cotizar envíos y, con token de admin, ver
+              Un asistente de IA puede consultar el catálogo, cotizar envíos y, con token de admin, ver
               ventas y pedidos.
             </span>
             <code className="cf-caption" style={{ wordBreak: "break-all" }}>{MCP_URL}</code>
