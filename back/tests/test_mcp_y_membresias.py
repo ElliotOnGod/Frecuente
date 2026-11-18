@@ -76,10 +76,10 @@ def test_integraciones_son_al_menos_cinco(gql, token_admin):
 
 
 def test_websocket_de_tiempo_real_acepta_otro_origen(cliente, token_admin):
-    """El front (Netlify) y el backend (Render) son orígenes distintos:
+    """El front y el backend se publican en Render con orígenes distintos:
     el WebSocket de las Subscriptions debe aceptar la conexión."""
     with cliente.websocket_connect(
-        "/graphql", subprotocols=["graphql-transport-ws"], headers={"origin": "https://frecuente.netlify.app"}
+        "/graphql", subprotocols=["graphql-transport-ws"], headers={"origin": "https://frecuente.onrender.com"}
     ) as ws:
         ws.send_json({"type": "connection_init", "payload": {"Authorization": f"Bearer {token_admin}"}})
         assert ws.receive_json()["type"] == "connection_ack"

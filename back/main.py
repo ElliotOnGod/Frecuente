@@ -48,7 +48,7 @@ from schema import (
 init_db()
 
 # Orígenes que pueden llamar a la API desde el navegador. En producción:
-#   CORS_ORIGENES=https://frecuente.netlify.app
+#   CORS_ORIGENES=https://frecuente.onrender.com
 # Sin la variable se permite cualquiera (cómodo para desarrollo).
 CORS_ORIGENES = [o.strip().rstrip("/") for o in os.getenv("CORS_ORIGENES", "").split(",") if o.strip()]
 CRON_SECRET = os.getenv("CRON_SECRET", "").strip()

@@ -208,7 +208,7 @@ def test_prefactura_cuadra_con_total(gql, nuevo_cliente):
 
 
 def test_prefactura_invalida_no_se_publica(gql, nuevo_cliente, token_admin, cliente):
-    """RQNF118: si la validación falla, queda en «error», el cliente no la ve ni
+    """RQNF118 y RQNF185: si la validación falla, queda en «error», el cliente no la ve ni
     la descarga y el administrador ve los errores."""
     from database import db
 

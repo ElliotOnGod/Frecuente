@@ -1171,8 +1171,9 @@ def _generar_prefactura(pedido: dict) -> dict | None:
     Construye el XML con los datos fiscales guardados con el pedido (o público
     en general, RQNF112), lo valida (RQNF113 a RQNF117) y lo guarda como
     «validada». Si una validación falla queda como «error»: el cliente no la
-    ve ni la descarga y el administrador ve los errores en el panel (RQNF118).
-    Nunca interrumpe el pago: un error aquí solo se registra."""
+    ve ni la descarga (RQNF118) y el administrador ve los errores en el panel
+    (RQNF185). Si el aviso de pago llega dos veces hay una sola prefactura
+    (RQNF179). Nunca interrumpe el pago: un error aquí solo se registra (RQNF180)."""
     try:
         existente = relacional.prefactura(pedido["_id"])
         if existente is not None:
@@ -2194,8 +2195,8 @@ def _limpiar_metodos(metodos: List[str]) -> List[str]:
 
 
 def _datos_fiscales_producto(tasa_iva, clave_prod_serv, clave_unidad, categoria_id: int | None = None) -> dict:
-    """Tasa de IVA y claves SAT de un producto (RQNF116, RQNF115). Al crear, lo
-    que no venga se toma de su categoría; al editar, solo se guarda lo que venga."""
+    """Tasa de IVA y claves SAT de un producto (RQNF181, RQNF182, RQNF186). Al crear, lo
+    que no venga se toma de su categoría (RQNF183); al editar, solo se guarda lo que venga."""
     defecto = cat_sat.POR_CATEGORIA.get(categoria_id, cat_sat.POR_DEFECTO) if categoria_id is not None else {}
     datos = {}
     tasa = tasa_iva if tasa_iva is not None else defecto.get("tasa_iva")
