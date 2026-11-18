@@ -7,14 +7,14 @@
 #   2. Frontend: instala, analiza calidad (ESLint), corre las pruebas
 #                (Vitest) y genera el build de producción de Astro.
 # Solo en main y si TODO lo anterior pasó:
-#   3. Despliegue: backend en Render y frontend en Netlify.
+#   3. Despliegue: backend y frontend en Render.
 #
 # Secretos y variables (Settings → Secrets and variables → Actions):
 #   secrets.RENDER_DEPLOY_HOOK_URL   Render → servicio → Settings → Deploy Hook
-#   secrets.NETLIFY_BUILD_HOOK_URL   Netlify → Site → Build & deploy → Build hooks
+#   secrets.RENDER_FRONT_DEPLOY_HOOK_URL  Render → sitio del front → Settings → Deploy Hook
 #   vars.PUBLIC_API_URL              https://<backend>.onrender.com/graphql
-# Si no están, el paso lo dice y no falla: Render y Netlify también pueden
-# desplegar solos desde GitHub (en Render: Auto-Deploy → "After CI checks pass").
+# Si no están, el paso lo dice y no falla: Render también puede desplegar
+# solo desde GitHub (Auto-Deploy → "After CI checks pass").
 # =========================================================
 name: CI/CD
 
@@ -117,7 +117,7 @@ jobs:
           retention-days: 7
 
   deploy:
-    name: Despliegue (Render + Netlify)
+    name: Despliegue (Render)
     needs: [backend, frontend]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -133,13 +133,13 @@ jobs:
             echo "::notice::Sin RENDER_DEPLOY_HOOK_URL. Render despliega solo con Auto-Deploy 'After CI checks pass'."
           fi
 
-      - name: Frontend en Netlify
+      - name: Frontend en Render
         env:
-          HOOK: ${{ secrets.NETLIFY_BUILD_HOOK_URL }}
+          HOOK: ${{ secrets.RENDER_FRONT_DEPLOY_HOOK_URL }}
         run: |
           if [ -n "$HOOK" ]; then
-            curl -fsS -X POST -d '{}' "$HOOK" > /dev/null
-            echo "Netlify: despliegue del front iniciado"
+            curl -fsS -X POST "$HOOK" > /dev/null
+            echo "Render: despliegue del front iniciado"
           else
-            echo "::notice::Sin NETLIFY_BUILD_HOOK_URL. Netlify despliega solo desde su integración con GitHub."
+            echo "::notice::Sin RENDER_FRONT_DEPLOY_HOOK_URL. Render despliega el front solo con Auto-Deploy 'After CI checks pass'."
           fi
