@@ -59,14 +59,14 @@ jobs:
             exit 1
           fi
 
-      - name: Instalar pg_dump 17 y mongodump
+      - name: Instalar pg_dump 18 y mongodump
         run: |
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y > /dev/null
-          sudo apt-get install -y -qq postgresql-client-17 > /dev/null
+          sudo apt-get install -y -qq postgresql-client-18 > /dev/null
           curl -fsSL -o tools.deb \
             https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2204-x86_64-100.10.0.deb
           sudo apt-get install -y -qq ./tools.deb > /dev/null
-          /usr/lib/postgresql/17/bin/pg_dump --version
+          /usr/lib/postgresql/18/bin/pg_dump --version
           mongodump --version | head -1
 
       - name: Respaldar las dos bases
@@ -76,7 +76,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir respaldo
-          /usr/lib/postgresql/17/bin/pg_dump "$DATABASE_URL" \
+          /usr/lib/postgresql/18/bin/pg_dump "$DATABASE_URL" \
             --format=custom --no-owner --no-acl --file=respaldo/postgres.dump
           mongodump --uri="$MONGODB_URI" --gzip --archive=respaldo/mongo.archive.gz --quiet
           ls -l respaldo
