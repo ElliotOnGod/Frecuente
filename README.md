@@ -25,7 +25,9 @@ visual del **Manual de Identidad Digital — Café Frecuente v1.0**
 
 **Producto Integrador:** la especificación de requerimientos (SRS) y el
 estudio de viabilidad se entregan como documentos aparte. Los diagramas UML
-están en `docs/` (`uml-componentes.svg` y `uml-entidades.svg`).
+de `docs/` (`uml-componentes.svg` y `uml-entidades.svg`) son los de la entrega
+del 8 de noviembre; el modelo de datos vigente, con la prefactura, es el
+Diagrama Entidad-Relación de la sección 5.4 del SRS.
 
 | Requisito | Implementación |
 |---|---|
@@ -35,7 +37,7 @@ están en `docs/` (`uml-componentes.svg` y `uml-entidades.svg`).
 | Mercado Pago + PayPal | Checkout Pro y Orders v2 (simulado o sandbox) |
 | 5+ APIs de terceros | Mercado Pago, PayPal, Envia.com, Envia Geocodes, Brevo, OpenFreeMap |
 | CI/CD | GitHub Actions: lint, pruebas, build y despliegue (`.github/workflows/`) |
-| Nube | Render (backend), Netlify (front), Neon (PostgreSQL), MongoDB Atlas |
+| Nube | Render (backend y frontend), Neon (PostgreSQL), MongoDB Atlas |
 
 ---
 
@@ -675,8 +677,11 @@ Todas están explicadas en `back/.env.example`:
 | `PAGOS_MODO`, `MP_*`, `PAYPAL_*` | Render | Pasarelas de pago |
 | `ENVIA_TOKEN`, `ENVIA_API` | Render | Envíos |
 | `BREVO_API_KEY`, `BREVO_REMITENTE`, `CORREO_TIENDA` | Render | Correos |
+| `FRONT_URL` | Render | Dirección del sitio publicado (`https://frecuente.onrender.com`), para los enlaces de los correos, como el de recuperación de contraseña |
+| `EMISOR_RFC`, `EMISOR_NOMBRE`, `EMISOR_REGIMEN`, `EMISOR_CP` | Render | Datos fiscales de FRECUENTE para la prefactura; vacíos = contribuyente de pruebas del SAT (EKU9003173C9) |
 | `CRON_SECRET` | Render + GitHub Secret | `POST /tareas/recompras` |
-| `PUBLIC_API_URL` | Front + GitHub Variable | URL del backend para el front |
+| `PUBLIC_API_URL` | Render (front) + GitHub Variable | URL del backend para el front |
+| `DATABASE_URL`, `MONGODB_URI`, `RESPALDO_CLAVE` | GitHub Secrets | Respaldo diario (`.github/workflows/respaldo.yml`); `RESPALDO_CLAVE` es la frase con la que se cifra |
 
 Ningún secreto está en el código ni en el repositorio (`.env` está en `.gitignore`).
 
@@ -721,16 +726,23 @@ Para probarlo: `npx @modelcontextprotocol/inspector` y la URL
 
 `.github/workflows/ci.yml` corre en cada push y pull request:
 
-1. **Backend:** `ruff check .` y `pytest` (42 pruebas) contra PostgreSQL y
+1. **Backend:** `ruff check .` y `pytest` (55 pruebas) contra PostgreSQL y
    MongoDB reales levantados por el workflow.
 2. **Frontend:** `npm run lint` (ESLint), `npm test` (Vitest) y `npm run build`.
-3. **Despliegue** (solo en `main` y si todo pasó): deploy hook de Render y
-   build hook de Netlify (`RENDER_DEPLOY_HOOK_URL`, `NETLIFY_BUILD_HOOK_URL` en
-   GitHub Secrets). Sin ellos, Render puede desplegar solo con
-   *Auto-Deploy → After CI checks pass*.
+3. **Despliegue** (solo en `main` y si todo pasó): deploy hooks de Render
+   para el backend y el frontend (`RENDER_DEPLOY_HOOK_URL` y
+   `RENDER_FRONT_DEPLOY_HOOK_URL` en GitHub Secrets). Sin ellos, Render
+   despliega solo con *Auto-Deploy → After CI checks pass*.
 
 `.github/workflows/recompras.yml` corre a diario las recompras (necesita
 `vars.BACKEND_URL` y `secrets.CRON_SECRET`).
+
+`.github/workflows/respaldo.yml` respalda las dos bases todos los días a las
+03:00 del centro de México (09:00 UTC) y también se puede correr a mano
+(*Actions → Respaldo diario → Run workflow*): `pg_dump` de PostgreSQL y
+`mongodump` de MongoDB, cifrados con GPG (AES-256) y guardados como artifact
+por 30 días. Para abrir uno:
+`gpg -d respaldo.tar.gz.gpg > respaldo.tar.gz` con la frase de `RESPALDO_CLAVE`.
 
 ## Fotos de productos
 
@@ -754,7 +766,7 @@ es la principal y también queda en `imagen_url`. Las categorías tienen una.
   gratuita), en `datos_ejemplo.json`. Si tu base es de una entrega anterior,
   al arrancar el backend se las pone solo a los productos que no tenían foto.
 
-> En Netlify las fotos de Unsplash se ven siempre; las que subas desde el
+> En el sitio publicado las fotos de Unsplash se ven siempre; las que subas desde el
 > panel necesitan que el backend esté publicado (las sirve él).
 
 ## Ubicación del local (mapa)
@@ -791,8 +803,39 @@ un hook propio `useSuscripcion`), y el front corre
 sobre **Astro** con arquitectura de islas y rutas por archivo, y hay inicio
 de sesión con JWT y formularios controlados con validación.
 
+## Recuperación de contraseña
+
+En `/login`, «¿Olvidaste tu contraseña?» lleva a `/recuperar`. El servidor
+responde siempre lo mismo, tenga o no cuenta el correo, y solo a las cuentas
+activas les manda un enlace (`FRONT_URL/recuperar?token=…`). El enlace es un
+JWT con propósito `recuperar` que vence a los 30 minutos y lleva una huella
+del hash actual de la contraseña: al cambiarla, el mismo enlace deja de
+servir. La contraseña nueva debe tener al menos 8 caracteres.
+
+## Prefactura (CFDI)
+
+Al aprobarse el pago de un pedido se genera su prefactura en XML con el
+esquema CFDI 4.0 del SAT (`back/cfdi/`). En el pago, el cliente puede capturar
+sus datos fiscales (RFC, nombre o razón social, régimen, CP fiscal y uso del
+CFDI); sin ellos, el receptor es el público en general (`XAXX010101000`).
+Cada producto tiene su tasa de IVA (0 % alimentos, 16 % accesorios) y sus
+claves del SAT, y el envío va como un concepto más.
+
+- **Validación:** contra los XSD del SAT (copia local en `back/cfdi/xsd/`) y
+  los catálogos; la suma de conceptos más IVA debe ser igual al total del
+  pedido. Si algo falla queda en estado `error`, el cliente no la ve y el
+  administrador ve los errores en **Pedidos**.
+- **Descarga:** `GET /prefacturas/<pedido>.xml` y `.pdf` (el PDF sale del XML
+  guardado), solo para el dueño del pedido o un administrador.
+- **Sin timbrar:** no lleva sello digital ni timbre fiscal; el timbrado con un
+  PAC queda pendiente.
+
+## Aviso de privacidad
+
+`/aviso-de-privacidad`, enlazado en el pie de página y en el registro.
+
 ## Pendiente para la siguiente etapa
 
-Cobro recurrente automático con tarjeta guardada, facturación electrónica
-(CFDI), cupones de descuento y fotografía propia del local (por ahora son
+Cobro recurrente automático con tarjeta guardada, timbrado de la prefactura
+con un PAC, cupones de descuento y fotografía propia del local (por ahora son
 fotos libres de Unsplash).
