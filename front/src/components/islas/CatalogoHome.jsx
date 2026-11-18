@@ -28,7 +28,7 @@ export default function CatalogoHome({ children }) {
     <div className="cf-layout">
       <Sidebar categorias={categorias} />
 
-      <main>
+      <section>
         <h2>Compra por categoría</h2>
 
         {loading && <SkeletonGrid cantidad={4} />}
@@ -55,7 +55,7 @@ export default function CatalogoHome({ children }) {
         )}
 
         {children}
-      </main>
+      </section>
     </div>
   );
 }

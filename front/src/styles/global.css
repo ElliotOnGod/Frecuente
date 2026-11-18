@@ -26,6 +26,11 @@ body { display: flex; flex-direction: column; }
 
 .cf-main { flex: 1; padding: var(--espacio-xl) 0; }
 
+/* Título de la tarjeta de producto: es h2 para que los encabezados sigan el
+   orden h1 → h2 en la tienda y en cada categoría (accesibilidad), pero se ve
+   del tamaño de un h3, como en el manual de identidad. */
+.cf-card__titulo { font-size: var(--font-size-h3); line-height: var(--line-height-h3); }
+
 /* Ahora la navegación usa <a> reales: se les quita el subrayado
    donde se ven como botón, tarjeta o elemento de menú. */
 a.cf-btn,

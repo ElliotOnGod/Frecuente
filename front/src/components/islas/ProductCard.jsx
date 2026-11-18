@@ -21,7 +21,7 @@ export default function ProductCard({ producto }) {
         <Foto src={producto.imagenUrl} alt={producto.nombre} categoriaId={producto.categoriaId} ancho={480} />
       </button>
       <div className="cf-card__cuerpo">
-        <h3 className="cf-card__titulo">{producto.nombre}</h3>
+        <h2 className="cf-card__titulo">{producto.nombre}</h2>
         <p className="cf-card__precio">{pesos(producto.precio)}</p>
         {producto.variantes?.length > 0 && (
           <p className="cf-caption" style={{ margin: 0 }}>En grano o molido a tu gusto</p>
