@@ -1,0 +1,103 @@
+# =========================================================
+# Respaldo diario de las bases de datos (RQNF156, RQNF157)
+#
+# Cada día a las 03:00, hora del centro de México, respalda:
+#   - PostgreSQL (Neon) con pg_dump      → usuarios, pedidos, pagos, envíos,
+#                                          recompras, correos y prefacturas
+#   - MongoDB (Atlas) con mongodump      → catálogo, fotos, planes y membresías
+# Los dos archivos se cifran con GPG (AES-256, clave simétrica) y se guardan
+# como artifact de GitHub Actions durante 30 días. El almacenamiento de GitHub
+# es un servidor distinto al de producción (Render, Neon y Atlas).
+#
+# Hora: el centro de México usa UTC-6 todo el año (sin horario de verano
+# desde 2022), así que las 03:00 son las 09:00 UTC.
+#
+# Configura en Settings → Secrets and variables → Actions → Secrets:
+#   secrets.DATABASE_URL     la misma URL de PostgreSQL que usa Render
+#   secrets.MONGODB_URI      la URI de MongoDB Atlas (la de MONGO_URI en Render)
+#   secrets.RESPALDO_CLAVE   frase para cifrar; sin ella no se puede abrir el respaldo
+#
+# Restaurar (con la frase en la variable RESPALDO_CLAVE):
+#   gpg --batch --pinentry-mode loopback --passphrase-fd 0 -d respaldo.tar.gz.gpg \
+#       <<< "$RESPALDO_CLAVE" | tar xz
+#   pg_restore --no-owner -d "$DATABASE_URL" postgres.dump
+#   mongorestore --uri="$MONGODB_URI" --gzip --archive=mongo.archive.gz
+# =========================================================
+name: Respaldo diario
+
+on:
+  schedule:
+    - cron: "0 9 * * *"   # 09:00 UTC = 03:00 en el centro de México
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: respaldo
+  cancel-in-progress: false
+
+jobs:
+  respaldo:
+    name: Respaldar PostgreSQL y MongoDB
+    runs-on: ubuntu-22.04
+    env:
+      TZ: America/Mexico_City
+    steps:
+      - name: Revisar que existan los secretos
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          RESPALDO_CLAVE: ${{ secrets.RESPALDO_CLAVE }}
+        run: |
+          faltan=""
+          [ -n "$DATABASE_URL" ] || faltan="$faltan DATABASE_URL"
+          [ -n "$MONGODB_URI" ] || faltan="$faltan MONGODB_URI"
+          [ -n "$RESPALDO_CLAVE" ] || faltan="$faltan RESPALDO_CLAVE"
+          if [ -n "$faltan" ]; then
+            echo "::error::Faltan los secretos:$faltan"
+            exit 1
+          fi
+
+      - name: Instalar pg_dump 17 y mongodump
+        run: |
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y > /dev/null
+          sudo apt-get install -y -qq postgresql-client-17 > /dev/null
+          curl -fsSL -o tools.deb \
+            https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2204-x86_64-100.10.0.deb
+          sudo apt-get install -y -qq ./tools.deb > /dev/null
+          /usr/lib/postgresql/17/bin/pg_dump --version
+          mongodump --version | head -1
+
+      - name: Respaldar las dos bases
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        run: |
+          set -euo pipefail
+          mkdir respaldo
+          /usr/lib/postgresql/17/bin/pg_dump "$DATABASE_URL" \
+            --format=custom --no-owner --no-acl --file=respaldo/postgres.dump
+          mongodump --uri="$MONGODB_URI" --gzip --archive=respaldo/mongo.archive.gz --quiet
+          ls -l respaldo
+
+      - name: Cifrar con GPG
+        env:
+          RESPALDO_CLAVE: ${{ secrets.RESPALDO_CLAVE }}
+        run: |
+          set -euo pipefail
+          tar czf respaldo.tar.gz -C respaldo .
+          # La frase entra por la entrada estándar: no aparece en la línea de comandos ni en el log
+          printf '%s' "$RESPALDO_CLAVE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 --output respaldo.tar.gz.gpg respaldo.tar.gz
+          rm -rf respaldo respaldo.tar.gz
+          echo "FECHA=$(date +%Y-%m-%d_%H%M)" >> "$GITHUB_ENV"
+          ls -l respaldo.tar.gz.gpg
+
+      - name: Guardar el respaldo cifrado (30 días)
+        uses: actions/upload-artifact@v4
+        with:
+          name: respaldo-${{ env.FECHA }}
+          path: respaldo.tar.gz.gpg
+          retention-days: 30
+          if-no-files-found: error

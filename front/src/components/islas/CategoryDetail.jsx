@@ -1,3 +1,4 @@
+/** CategoryDetail — /categoria?id=N: productos de una categoría. */
 import { useEffect } from "react";
 import { useGraphQLQuery } from "../../hooks/useGraphQLQuery";
 import { RUTAS } from "../../lib/formato";

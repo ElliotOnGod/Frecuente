@@ -1,8 +1,8 @@
 """
 servidor_mcp.py — servidor MCP (Model Context Protocol) de Frecuente.
 
-¿Qué es MCP? Un protocolo abierto para que un asistente de IA (Claude,
-ChatGPT, Copilot…) use "herramientas" de un sistema. GraphQL es la API
+¿Qué es MCP? Un protocolo abierto para que un asistente de IA (un chat
+o un agente) use "herramientas" de un sistema. GraphQL es la API
 para NUESTRO front; MCP es la API para que un AGENTE consulte la tienda:
 "¿qué café sirve para prensa francesa?", "¿cómo va el pedido 37?",
 "¿qué productos tienen poco stock?".
@@ -10,7 +10,7 @@ para NUESTRO front; MCP es la API para que un AGENTE consulte la tienda:
 Vive en el mismo backend, en  POST /mcp  (transporte Streamable HTTP).
 Para probarlo:
     npx @modelcontextprotocol/inspector     → URL http://localhost:8000/mcp
-o agregarlo como conector remoto en Claude con esa URL (publicada).
+o agregarlo como conector remoto en un asistente de IA con esa URL (publicada).
 
 Herramientas públicas (catálogo):
     buscar_productos, ver_producto, listar_categorias, metodos_de_preparacion,

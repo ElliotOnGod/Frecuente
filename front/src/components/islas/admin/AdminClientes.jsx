@@ -1,3 +1,4 @@
+/** AdminClientes — /admin/clientes: clientes con pedidos, total gastado, última compra y membresía; cambio de rol y activación de cuentas. */
 import { useState } from "react";
 import { useGraphQLQuery } from "../../../hooks/useGraphQLQuery";
 import { graphqlRequest } from "../../../lib/graphql";

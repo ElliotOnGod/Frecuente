@@ -1,3 +1,4 @@
+/** Insignia — insignias de estado (pedido, pago, membresía, recompra, correo y conexión en vivo) siempre con texto. */
 import { ESTADO_CORREO, ESTADO_MEMBRESIA, ESTADO_PAGO, ESTADO_PEDIDO, ESTADO_SUSCRIPCION } from "../../lib/formato";
 
 /**

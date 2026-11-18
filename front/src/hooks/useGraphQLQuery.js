@@ -1,3 +1,4 @@
+/** useGraphQLQuery — hook propio para consultas GraphQL con estado de carga y error. */
 import { useEffect, useState } from "react";
 import { graphqlRequest } from "../lib/graphql";
 

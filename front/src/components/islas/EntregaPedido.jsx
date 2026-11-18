@@ -1,3 +1,4 @@
+/** EntregaPedido — dirección, paquetería, guía y rastreo de un pedido. */
 import { useState } from "react";
 import { graphqlRequest } from "../../lib/graphql";
 import { QUERY_RASTREO } from "../../lib/envios";

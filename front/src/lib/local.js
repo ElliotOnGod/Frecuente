@@ -15,6 +15,9 @@ export const LOCAL = {
   ciudad: "44650 Guadalajara, Jal.",
   lat: 20.67752,
   lng: -103.38385,
+  // Correo para solicitudes de privacidad (derechos ARCO). Vacío: el aviso
+  // de privacidad indica presentarlas en el local.
+  correo: "",
 };
 
 export const DIRECCION_COMPLETA = `${LOCAL.calle}, ${LOCAL.colonia}, ${LOCAL.ciudad}`;

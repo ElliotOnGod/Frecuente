@@ -1,3 +1,4 @@
+/** carrito.test.js — pruebas (Vitest) de las reglas del carrito: claves, cantidades, existencias y subtotal. */
 import { describe, expect, it } from "vitest";
 import { agregarItem, cambiarCantidad, claveDe, itemsParaApi, restarPedido, subtotalDe } from "./carrito";
 

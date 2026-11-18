@@ -1,3 +1,4 @@
+/** Cart — /carrito: lista editable del carrito con subtotal y paso al checkout. */
 import { useStore } from "../../store/useStore";
 import { pesos, RUTAS } from "../../lib/formato";
 import { usePedidoPendiente } from "../../hooks/usePedidoPendiente";

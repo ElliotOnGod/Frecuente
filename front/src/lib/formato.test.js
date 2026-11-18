@@ -1,3 +1,4 @@
+/** formato.test.js — pruebas (Vitest) de formatos de precio, rutas, redirección segura y datos de entrega. */
 import { describe, expect, it } from "vitest";
 import { RUTAS, destinoSeguro, pesos } from "./formato";
 import { entregaParaApi, faltantes } from "./envios";

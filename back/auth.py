@@ -96,9 +96,54 @@ def crear_token(usuario_id: int) -> str:
 def usuario_id_de_token(token: str) -> int:
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+        if "prop" in payload:
+            # Un token con propósito (p. ej. el de recuperación) no es una sesión
+            raise SesionInvalida("Tu sesión expiró, inicia sesión de nuevo")
         return int(payload["sub"])
     except (jwt.PyJWTError, KeyError, ValueError):
         raise SesionInvalida("Tu sesión expiró, inicia sesión de nuevo")
+
+
+# ---------------- recuperación de contraseña (RQF4, RQF5) ----------------
+#
+# El enlace lleva un JWT con propósito "recuperar" que vence a los 30 minutos
+# (RQNF12) y una huella del hash ACTUAL de la contraseña. Al cambiarla, el hash
+# cambia, la huella ya no coincide y el mismo enlace deja de servir (RQNF13).
+# Así no hace falta una tabla de tokens usados.
+
+RECUPERAR_MINUTOS = 30
+
+
+class EnlaceInvalido(Exception):
+    """El enlace de recuperación está alterado, ya venció o ya se usó."""
+
+
+def huella_password(password_hash: str) -> str:
+    """Huella corta del hash guardado (HMAC con la clave del servidor)."""
+    return hmac.new(JWT_SECRET.encode(), password_hash.encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def crear_token_recuperacion(usuario_id: int, password_hash: str, ahora: datetime | None = None) -> str:
+    ahora = ahora or datetime.now(timezone.utc)
+    payload = {
+        "sub": str(usuario_id),
+        "prop": "recuperar",
+        "huella": huella_password(password_hash),
+        "iat": ahora,
+        "exp": ahora + timedelta(minutes=RECUPERAR_MINUTOS),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
+
+
+def leer_token_recuperacion(token: str) -> tuple[int, str]:
+    """(usuario_id, huella) del enlace; EnlaceInvalido si venció o está alterado."""
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+        if payload.get("prop") != "recuperar":
+            raise EnlaceInvalido()
+        return int(payload["sub"]), str(payload["huella"])
+    except (jwt.PyJWTError, KeyError, ValueError):
+        raise EnlaceInvalido()
 
 
 def token_de_request(request) -> str | None:

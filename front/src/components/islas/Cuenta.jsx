@@ -1,3 +1,4 @@
+/** Cuenta — /cuenta: datos del cliente, historial de pedidos, membresía y recompras. */
 import { useGraphQLQuery } from "../../hooks/useGraphQLQuery";
 import { useStore } from "../../store/useStore";
 import { RUTAS, fechaCorta, fechaLarga, pesos } from "../../lib/formato";

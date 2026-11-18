@@ -1,3 +1,4 @@
+/** CategoryGrid — rejilla de tarjetas de categoría del catálogo. */
 import { RUTAS } from "../../lib/formato";
 import Foto from "./Foto";
 

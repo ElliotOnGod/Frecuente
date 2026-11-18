@@ -38,6 +38,8 @@ export const RUTAS = {
     siguiente ? `/login?siguiente=${encodeURIComponent(siguiente)}` : "/login",
   registro: (siguiente) =>
     siguiente ? `/registro?siguiente=${encodeURIComponent(siguiente)}` : "/registro",
+  recuperar: "/recuperar",
+  avisoPrivacidad: "/aviso-de-privacidad",
 };
 
 /**

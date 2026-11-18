@@ -1,3 +1,4 @@
+/** Tienda — /tienda: catálogo completo con buscador y filtros por categoría y método de preparación. */
 import { useEffect, useState } from "react";
 import { useGraphQLQuery } from "../../hooks/useGraphQLQuery";
 import { RUTAS, leerParametros } from "../../lib/formato";

@@ -1,3 +1,4 @@
+/** OrderSuccess — /pedido?id=N: detalle del pedido, estado del pago en vivo, instrucciones, cancelación y prefactura. */
 import { useEffect, useRef, useState } from "react";
 import { useGraphQLQuery } from "../../hooks/useGraphQLQuery";
 import { useSuscripcion } from "../../hooks/useSuscripcion";
@@ -8,6 +9,7 @@ import { QUERY_METODOS, QUERY_PEDIDO, SUB_SEGUIR_PEDIDO, cancelarMiPedido, confi
 import { EstadoPago, EstadoPedido, IndicadorEnVivo } from "./Insignia";
 import { Skeleton } from "./Skeleton";
 import EntregaPedido from "./EntregaPedido";
+import PrefacturaPedido from "./PrefacturaPedido";
 
 /** Mensaje principal según el estado del pedido y de su pago. */
 function Aviso({ pedido }) {
@@ -261,6 +263,9 @@ export default function OrderSuccess() {
       )}
 
       <EntregaPedido pedido={pedido} />
+
+      {/* RQF92 y RQF93: la prefactura se genera al aprobarse el pago */}
+      {estaPagado(pedido) && <PrefacturaPedido pedidoId={pedido.id} />}
 
       {porPagar && pago.instrucciones.length > 0 && (
         <section className="cf-panel cf-instrucciones" aria-labelledby="titulo-instr">

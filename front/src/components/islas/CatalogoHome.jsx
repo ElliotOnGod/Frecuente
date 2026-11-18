@@ -1,3 +1,4 @@
+/** CatalogoHome — catálogo del inicio: categorías y accesos por método de preparación. */
 import { useGraphQLQuery } from "../../hooks/useGraphQLQuery";
 import { RUTAS } from "../../lib/formato";
 import Sidebar from "./Sidebar";

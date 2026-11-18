@@ -1,3 +1,4 @@
+/** ProductCard — tarjeta de producto del catálogo que abre su detalle. */
 import { useStore } from "../../store/useStore";
 import { pesos } from "../../lib/formato";
 import Foto from "./Foto";

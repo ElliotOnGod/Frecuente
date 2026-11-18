@@ -1,3 +1,4 @@
+/** usePedidoPendiente — pedido sin pagar del carrito actual, sincronizado con el servidor. */
 import { useEffect } from "react";
 import { useGraphQLQuery } from "./useGraphQLQuery";
 import { useStore } from "../store/useStore";

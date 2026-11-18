@@ -1,3 +1,4 @@
+/** useSuscripcion — hook propio para GraphQL Subscriptions por WebSocket. */
 import { useEffect, useRef, useState } from "react";
 import { suscribir } from "../lib/subscripciones";
 

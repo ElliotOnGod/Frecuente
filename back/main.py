@@ -4,6 +4,8 @@ main.py — servidor FastAPI que expone un único endpoint GraphQL.
     POST /graphql                 (GraphiQL habilitado en GET /graphql)
     WS   /graphql                 Subscriptions en tiempo real (graphql-transport-ws)
     GET  /imagenes/<id>           fotos de productos subidas desde el panel
+    GET  /prefacturas/<pedido>.xml  prefactura del pedido en XML (dueño o admin)
+    GET  /prefacturas/<pedido>.pdf  representación impresa en PDF (dueño o admin)
     POST /webhooks/mercadopago    avisos de pago de Mercado Pago (opcional)
     POST /mcp                     servidor MCP para agentes de IA (servidor_mcp.py)
     POST /tareas/recompras        genera los pedidos de recompra (para un cron)
@@ -30,8 +32,16 @@ from strawberry.fastapi import GraphQLRouter
 import pagos
 import relacional
 import servidor_mcp
+from auth import SesionInvalida, token_de_request, usuario_id_de_token
+from cfdi import prefactura as cfdi_prefactura
 from database import db, init_db
-from schema import _aplicar_resultado_pago, _aplicar_resultado_pago_membresia, procesar_recompras, schema
+from schema import (
+    PREFACTURA_DISPONIBLE,
+    _aplicar_resultado_pago,
+    _aplicar_resultado_pago_membresia,
+    procesar_recompras,
+    schema,
+)
 
 # Prepara MongoDB (catálogo) y PostgreSQL (usuarios, pedidos…) y carga los
 # datos de ejemplo si están vacías
@@ -151,6 +161,61 @@ def imagen(imagen_id: str):
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+def _prefactura_para_descarga(request: Request, pedido_id: int) -> dict:
+    """Prefactura que puede descargar quien hace la petición.
+
+    La credencial va en el encabezado Authorization: Bearer <token> (el front
+    descarga con fetch, nunca con el token en la URL).
+      - sin sesión válida → 401
+      - RQNF119: ni dueño del pedido ni administrador → 403
+      - RQNF118: sin prefactura validada → 404 (una con error no se publica)"""
+    token = token_de_request(request)
+    if token is None:
+        raise HTTPException(status_code=401, detail="Necesitas iniciar sesión")
+    try:
+        usuario = relacional.usuario(usuario_id_de_token(token))
+    except SesionInvalida:
+        usuario = None
+    if usuario is None or not usuario["activo"]:
+        raise HTTPException(status_code=401, detail="Tu sesión expiró, inicia sesión de nuevo")
+    pedido = relacional.pedido(pedido_id)
+    if usuario["rol"] != "admin" and (pedido is None or pedido["usuario_id"] != usuario["_id"]):
+        raise HTTPException(status_code=403, detail="Solo el dueño del pedido o un administrador la descarga")
+    doc = relacional.prefactura(pedido_id)
+    if pedido is None or doc is None or doc["estado"] not in PREFACTURA_DISPONIBLE:
+        raise HTTPException(status_code=404, detail="Este pedido no tiene una prefactura disponible")
+    return doc
+
+
+def _descarga(contenido: bytes, tipo: str, nombre: str) -> Response:
+    return Response(
+        content=contenido,
+        media_type=tipo,
+        headers={
+            "Content-Disposition": f'attachment; filename="{nombre}"',
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@app.get("/prefacturas/{pedido_id}.xml")
+def prefactura_xml(pedido_id: int, request: Request):
+    """RQF92 (cliente) y RQF94 (administrador): XML de la prefactura."""
+    doc = _prefactura_para_descarga(request, pedido_id)
+    return _descarga(doc["xml"].encode("utf-8"), "application/xml",
+                     f"prefactura-{doc['serie']}-{doc['folio']}.xml")
+
+
+@app.get("/prefacturas/{pedido_id}.pdf")
+def prefactura_pdf(pedido_id: int, request: Request):
+    """RQF93 (cliente) y RQF96 (administrador): PDF generado a partir del XML
+    guardado, con los mismos datos e importes (RQNF120)."""
+    doc = _prefactura_para_descarga(request, pedido_id)
+    return _descarga(cfdi_prefactura.pdf(doc["xml"]), "application/pdf",
+                     f"prefactura-{doc['serie']}-{doc['folio']}.pdf")
 
 
 @app.post("/webhooks/mercadopago")

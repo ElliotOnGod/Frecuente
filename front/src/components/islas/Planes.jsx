@@ -1,3 +1,4 @@
+/** Planes — /membresias: planes de membresía y su contratación. */
 import { useState } from "react";
 import { useGraphQLQuery } from "../../hooks/useGraphQLQuery";
 import { useStore } from "../../store/useStore";

@@ -1,3 +1,4 @@
+/** MapaLocal — mapa interactivo con la ubicación del local (MapLibre + OpenFreeMap). */
 import { useEffect, useRef, useState } from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { LOCAL, DIRECCION_COMPLETA, ENLACES_LOCAL } from "../../lib/local";

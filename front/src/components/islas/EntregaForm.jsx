@@ -1,3 +1,4 @@
+/** EntregaForm — tipo de entrega del checkout: recoger en el local o domicilio con código postal y cotización de envío. */
 import { useEffect, useRef, useState } from "react";
 import { pesos } from "../../lib/formato";
 import { ESTADOS_MX, buscarCodigoPostal, cotizarEnvio, cpValido } from "../../lib/envios";

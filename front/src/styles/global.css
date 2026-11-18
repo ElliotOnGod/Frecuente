@@ -1610,3 +1610,11 @@ section + .cf-panel { margin-top: var(--espacio-lg); }
 @media (min-width: 1100px) { .cf-integraciones { grid-template-columns: repeat(3, 1fr); } }
 .cf-integracion { display: grid; gap: var(--espacio-xs); margin: 0; }
 .cf-lista-simple { margin: 0; padding-left: var(--espacio-lg); }
+
+/* Aviso de privacidad: texto largo con ancho de lectura cómodo */
+.cf-legal { max-width: 72ch; }
+.cf-legal h2 { margin-top: var(--espacio-lg); }
+.cf-legal li { margin-bottom: var(--espacio-xs); }
+
+/* Prefactura: datos en lista de definición (dt/dd) */
+.cf-datos dd { margin: var(--espacio-xs) 0 0; }

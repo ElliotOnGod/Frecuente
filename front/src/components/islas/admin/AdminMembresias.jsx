@@ -1,3 +1,4 @@
+/** AdminMembresias — /admin/membresias: lista y filtros de membresías, confirmación de pago manual, cancelación y edición de planes. */
 import { useEffect, useState } from "react";
 import { graphqlRequest } from "../../../lib/graphql";
 import { useGraphQLQuery } from "../../../hooks/useGraphQLQuery";

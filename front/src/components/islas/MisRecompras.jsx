@@ -1,3 +1,4 @@
+/** MisRecompras — recompras del cliente en su cuenta: pausar, reanudar, cambiar frecuencia o cancelar. */
 import { useState } from "react";
 import { useGraphQLQuery } from "../../hooks/useGraphQLQuery";
 import { graphqlRequest } from "../../lib/graphql";
