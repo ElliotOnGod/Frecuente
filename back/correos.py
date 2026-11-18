@@ -3,6 +3,7 @@ correos.py — correos automáticos con la API de Brevo.
 
 Cuándo se manda un correo:
   - bienvenida          → al crear una cuenta
+  - recuperacion        → al pedir el enlace para cambiar la contraseña
   - pedido_nuevo_tienda → a la tienda (CORREO_TIENDA), con cada pedido nuevo
   - pedido_confirmado   → al cliente, cuando su pago se aprueba
   - pedido_enviado      → al cliente, con la paquetería y el número de guía
@@ -186,6 +187,19 @@ def bienvenida(usuario: dict) -> None:
         "<p>Ahora puedes pedir tu café en línea, recibirlo en casa y programar tu recompra.</p>"
         + _boton("Ver la tienda", f"{FRONT_URL}/tienda"),
         "bienvenida",
+    )
+
+
+def recuperacion(usuario: dict, token: str, minutos: int) -> None:
+    """Enlace para cambiar la contraseña (RQF4). Vence en `minutos`."""
+    enlace = f"{FRONT_URL}/recuperar?token={token}"
+    enviar(
+        usuario["email"], usuario["nombre"], "Cambia tu contraseña de Frecuente",
+        f"<p>Hola {escape(usuario['nombre'])}, recibimos una solicitud para cambiar tu contraseña.</p>"
+        f"<p>El enlace sirve una sola vez y vence en {minutos} minutos.</p>"
+        + _boton("Cambiar mi contraseña", enlace)
+        + "<p style='font-size:13px'>Si tú no lo pediste, ignora este correo: tu contraseña no cambia.</p>",
+        "recuperacion",
     )
 
 

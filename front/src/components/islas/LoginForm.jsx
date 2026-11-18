@@ -1,3 +1,4 @@
+/** LoginForm — /login: inicio de sesión con correo y contraseña y enlace para recuperar la contraseña. */
 import { useEffect, useState } from "react";
 import { graphqlRequest } from "../../lib/graphql";
 import { useStore } from "../../store/useStore";
@@ -88,6 +89,10 @@ export default function LoginForm() {
             onChange={(e) => setPassword(e.target.value)}
           />
         </div>
+
+        <p className="cf-caption">
+          <a href={RUTAS.recuperar}>¿Olvidaste tu contraseña?</a>
+        </p>
 
         <button
           className="cf-btn cf-btn--bloque"

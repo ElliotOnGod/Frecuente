@@ -1,3 +1,4 @@
+/** Checkout — /checkout: entrega, método de pago, recompra y datos fiscales; registra el pedido e inicia el pago. */
 import { useEffect, useState } from "react";
 import { graphqlRequest } from "../../lib/graphql";
 import { useGraphQLQuery } from "../../hooks/useGraphQLQuery";
@@ -7,7 +8,9 @@ import { pesos, RUTAS } from "../../lib/formato";
 import { CAMPOS_PEDIDO, QUERY_METODOS, cancelarMiPedido, irAPagar } from "../../lib/pagos";
 import { claveDe, itemsParaApi, subtotalDe } from "../../lib/carrito";
 import { DIRECCION_VACIA, entregaParaApi, faltantes } from "../../lib/envios";
+import { DATOS_FISCALES_VACIOS, normalizarDatosFiscales, validarDatosFiscales } from "../../lib/cfdi";
 import EntregaForm from "./EntregaForm";
+import DatosFiscalesForm from "./DatosFiscalesForm";
 import { Skeleton } from "./Skeleton";
 
 // Última dirección usada: comodidad de este navegador, no un dato importante
@@ -141,6 +144,9 @@ export default function Checkout() {
     opcion: null,
   }));
   const [recompra, setRecompra] = useState({ activa: false, dias: 30 });
+  // RQF90: datos fiscales opcionales para la prefactura
+  const [fiscal, setFiscal] = useState({ activa: false, datos: DATOS_FISCALES_VACIOS });
+  const [erroresFiscales, setErroresFiscales] = useState({});
 
   const aDomicilio = entrega.tipo === "domicilio";
   // Efectivo es solo al recoger; la recompra se paga en línea o por transferencia
@@ -167,6 +173,12 @@ export default function Checkout() {
       setError(`Completa la entrega: ${faltaEntrega.join(", ")}`);
       return;
     }
+    const revisionFiscal = fiscal.activa ? validarDatosFiscales(fiscal.datos) : {};
+    setErroresFiscales(revisionFiscal);
+    if (Object.keys(revisionFiscal).length) {
+      setError("Revisa tus datos fiscales para la prefactura.");
+      return;
+    }
     setEnviando(true);
     setError(null);
     let pedido;
@@ -177,6 +189,7 @@ export default function Checkout() {
           metodoPago: metodo,
           entrega: entregaParaApi(entrega.tipo, entrega.direccion, entrega.opcion),
           recompraCadaDias: recompra.activa ? recompra.dias : null,
+          datosFiscales: fiscal.activa ? normalizarDatosFiscales(fiscal.datos) : null,
         },
       });
       pedido = res.registrarPedido;
@@ -355,6 +368,8 @@ export default function Checkout() {
               : "Ideal para tu café de siempre: no guardamos tu tarjeta, solo te recordamos y preparamos el pedido."}
           </p>
         </section>
+
+        <DatosFiscalesForm valor={fiscal} onCambio={setFiscal} errores={erroresFiscales} />
         </div>
 
         <section className="cf-panel" aria-labelledby="titulo-resumen">

@@ -1,3 +1,4 @@
+/** SessionMenu — menú de sesión de la TopBar: iniciar sesión, cuenta, panel y cerrar sesión. */
 import { useStore } from "../../store/useStore";
 import { RUTAS } from "../../lib/formato";
 

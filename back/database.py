@@ -11,7 +11,8 @@ Modelo de documentos en MongoDB:
 
     categorias  { _id, nombre, descripcion, imagen_url }
     productos   { _id, nombre, descripcion, precio, stock, imagen_url, imagenes: [..],
-                  categoria_id, variante_nombre, variantes: [..], metodos: [..], peso_kg }
+                  categoria_id, variante_nombre, variantes: [..], metodos: [..], peso_kg,
+                  tasa_iva (0 | 0.16), clave_prod_serv, clave_unidad }   ← prefactura CFDI
     imagenes    { _id: "<hex>", tipo, datos (binario), bytes, creada, admin_id }
     planes      { _id, nombre, descripcion, precio, incluye: [..], opciones: [..],
                   activo, orden }
@@ -50,6 +51,7 @@ from dotenv import load_dotenv
 from pymongo import ASCENDING, MongoClient, ReturnDocument
 
 import relacional
+from cfdi import catalogos as cat_sat
 from auth import hashear_password
 from pagos import ESTADOS_PAGO, METODOS
 
@@ -132,7 +134,7 @@ VALIDADORES = {
     },
     "productos": {
         "bsonType": "object",
-        "required": ["_id", "nombre", "precio", "stock", "categoria_id"],
+        "required": ["_id", "nombre", "precio", "stock", "categoria_id", "tasa_iva", "clave_prod_serv", "clave_unidad"],
         "properties": {
             "_id": {"bsonType": "int"},
             "nombre": {"bsonType": "string", "minLength": 1},
@@ -147,6 +149,10 @@ VALIDADORES = {
             "variantes": {"bsonType": "array", "maxItems": 12, "items": {"bsonType": "string"}},
             "metodos": {"bsonType": "array", "items": {"enum": list(METODOS_PREPARACION)}},
             "peso_kg": {"bsonType": ["double", "int"], "minimum": 0},
+            # Prefactura CFDI: tasa de IVA del producto y sus claves del catálogo del SAT
+            "tasa_iva": {"enum": list(cat_sat.TASAS_IVA)},
+            "clave_prod_serv": {"enum": list(cat_sat.CLAVE_PROD_SERV)},
+            "clave_unidad": {"enum": list(cat_sat.CLAVE_UNIDAD)},
         },
     },
     # Fotos que sube el admin. Se guardan en MongoDB (no en disco) para que
@@ -273,7 +279,9 @@ def init_db(force: bool = False) -> None:
     if db.productos.estimated_document_count() == 0:
         _cargar_catalogo(datos)
     else:
-        # Base de una entrega anterior: agrega colecciones y campos nuevos
+        # Base de una entrega anterior: agrega colecciones y campos nuevos.
+        # Primero los datos fiscales de cada producto, porque el validador nuevo los exige.
+        completar_datos_fiscales(datos)
         for nombre, esquema in VALIDADORES.items():
             if nombre not in db.list_collection_names():
                 db.create_collection(nombre, validator={"$jsonSchema": esquema})
@@ -305,6 +313,8 @@ def _cargar_catalogo(datos: dict) -> None:
                 d["precio"] = float(d["precio"])
             if "peso_kg" in d:
                 d["peso_kg"] = float(d["peso_kg"])
+            if "tasa_iva" in d:
+                d["tasa_iva"] = float(d["tasa_iva"])
             docs.append(d)
         db[coleccion].insert_many(docs)
         db.contadores.insert_one({"_id": coleccion, "valor": max(d["_id"] for d in docs)})
@@ -343,6 +353,29 @@ def completar_catalogo_de_ejemplo(datos: dict) -> None:
                 cambios += r.modified_count
     if cambios:
         print(f"[frecuente] Se completaron {cambios} datos de ejemplo del catálogo")
+
+
+def completar_datos_fiscales(datos: dict) -> None:
+    """Productos sin tasa de IVA o sin claves del SAT (bases anteriores a la
+    prefactura): los de ejemplo toman los de datos_ejemplo.json y los demás
+    los de su categoría (cfdi/catalogos.py → POR_CATEGORIA)."""
+    de_ejemplo = {p["id"]: p for p in datos.get("productos", [])}
+    cambios = 0
+    for prod in db.productos.find(
+        {"$or": [{"tasa_iva": {"$exists": False}}, {"clave_prod_serv": {"$exists": False}},
+                 {"clave_unidad": {"$exists": False}}]}
+    ):
+        base = cat_sat.POR_CATEGORIA.get(prod.get("categoria_id"), cat_sat.POR_DEFECTO)
+        ejemplo = de_ejemplo.get(prod["_id"], {})
+        faltan = {}
+        for campo in ("tasa_iva", "clave_prod_serv", "clave_unidad"):
+            if campo not in prod:
+                valor = ejemplo.get(campo, base[campo])
+                faltan[campo] = float(valor) if campo == "tasa_iva" else valor
+        db.productos.update_one({"_id": prod["_id"]}, {"$set": faltan})
+        cambios += 1
+    if cambios:
+        print(f"[frecuente] Se agregaron la tasa de IVA y las claves del SAT a {cambios} productos")
 
 
 def cargar_planes() -> None:

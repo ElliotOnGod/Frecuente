@@ -1,3 +1,4 @@
+/** AdminResumen — /admin: resumen de ventas del periodo, comparación con el anterior, gráficas y existencias bajas. */
 import { useState } from "react";
 import { useGraphQLQuery } from "../../../hooks/useGraphQLQuery";
 import { useRecargaEnVivo } from "../../../hooks/useRecargaEnVivo";

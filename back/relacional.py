@@ -4,7 +4,7 @@ relacional.py — PostgreSQL: la parte TRANSACCIONAL de Frecuente.
 ¿Por qué dos bases de datos? (persistencia políglota)
 
   PostgreSQL  → usuarios, pedidos, renglones, pagos, envíos, suscripciones
-                (recompra) y bitácora de correos. Son datos con forma fija,
+                (recompra), bitácora de correos y prefacturas. Son datos con forma fija,
                 relaciones entre sí (llaves foráneas) y operaciones que tocan
                 varias tablas a la vez: un pedido nuevo inserta en pedidos,
                 pedido_items, pagos y envios, y debe quedar TODO o NADA
@@ -134,7 +134,7 @@ def migrar() -> list[str]:
     return aplicadas
 
 
-TABLAS = ["correos", "envios", "pagos", "pedido_items", "pedidos", "suscripcion_items", "suscripciones", "usuarios", "migraciones"]
+TABLAS = ["prefacturas", "correos", "envios", "pagos", "pedido_items", "pedidos", "suscripcion_items", "suscripciones", "usuarios", "migraciones"]
 
 
 def reiniciar() -> None:
@@ -278,6 +278,17 @@ def actualizar_usuario(usuario_id: int, **campos) -> dict | None:
     return _usuario_doc(fila)
 
 
+def cambiar_password(usuario_id: int, hash_anterior: str, hash_nuevo: str) -> bool:
+    """Cambia la contraseña solo si el hash guardado sigue siendo `hash_anterior`.
+    Si dos peticiones usan el mismo enlace a la vez, solo la primera lo logra."""
+    with transaccion() as con:
+        cur = con.execute(
+            "UPDATE usuarios SET password_hash = %s WHERE id = %s AND password_hash = %s",
+            (hash_nuevo, usuario_id, hash_anterior),
+        )
+        return cur.rowcount == 1
+
+
 def contar_admins_activos() -> int:
     with transaccion() as con:
         return con.execute("SELECT count(*) AS n FROM usuarios WHERE rol = 'admin' AND activo").fetchone()["n"]
@@ -289,6 +300,7 @@ def contar_admins_activos() -> int:
 
 _SQL_PEDIDOS = """
     SELECT p.id, p.usuario_id, p.suscripcion_id, p.fecha, p.estado, p.subtotal, p.envio, p.total,
+           p.datos_fiscales,
            g.metodo, g.estado AS pago_estado, g.modo, g.referencia, g.proveedor_id, g.pago_id,
            g.detalle, g.intentos, g.fecha_pago, g.actualizado
     FROM pedidos p
@@ -334,6 +346,7 @@ def _armar_pedidos(con, filas: list[dict]) -> list[dict]:
                 "subtotal": _f(f["subtotal"]),
                 "envio": _f(f["envio"]),
                 "total": _f(f["total"]),
+                "datos_fiscales": f["datos_fiscales"],
                 "items": items[f["id"]],
                 "pago": {
                     "metodo": f["metodo"],
@@ -396,6 +409,7 @@ def insertar_pedido(
     entrega: dict | None,
     suscripcion_id: int | None = None,
     pedido_id: int | None = None,
+    datos_fiscales: dict | None = None,
 ) -> int:
     """Inserta pedido + renglones + pago + envío con la conexión dada (dentro
     de la transacción de quien llama).
@@ -406,9 +420,10 @@ def insertar_pedido(
     total = round(subtotal + envio, 2)
     if pedido_id is None:
         fila = con.execute(
-            "INSERT INTO pedidos (usuario_id, suscripcion_id, fecha, estado, subtotal, envio, total)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
-            (usuario_id, suscripcion_id, fecha, estado, subtotal, envio, total),
+            "INSERT INTO pedidos (usuario_id, suscripcion_id, fecha, estado, subtotal, envio, total, datos_fiscales)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            (usuario_id, suscripcion_id, fecha, estado, subtotal, envio, total,
+             Jsonb(datos_fiscales) if datos_fiscales else None),
         ).fetchone()
         pedido_id = fila["id"]
     else:
@@ -509,6 +524,52 @@ def actualizar_pedido(
         if entrega:
             _set(con, "envios", "pedido_id", pedido_id, entrega, set(_COLS_ENVIO))
         return _pedido_en(con, pedido_id)
+
+
+# =========================================================
+# Prefacturas (CFDI) — una por pedido pagado
+# =========================================================
+
+_COLS_PREFACTURA = (
+    "id, pedido_id, serie, folio, rfc_receptor, nombre_receptor, regimen_fiscal_receptor, cp_fiscal_receptor,"
+    " uso_cfdi, subtotal, iva, total, xml, estado, uuid_timbre, creada"
+)
+
+
+def _prefactura_doc(fila: dict | None) -> dict | None:
+    if fila is None:
+        return None
+    return {**fila, "subtotal": _f(fila["subtotal"]), "iva": _f(fila["iva"]), "total": _f(fila["total"])}
+
+
+def prefactura(pedido_id: int) -> dict | None:
+    with transaccion() as con:
+        return _prefactura_doc(
+            con.execute(f"SELECT {_COLS_PREFACTURA} FROM prefacturas WHERE pedido_id = %s", (pedido_id,)).fetchone()
+        )
+
+
+def crear_prefactura(datos: dict) -> tuple[dict, bool]:
+    """Inserta la prefactura del pedido. Si ya existía (dos avisos de pago a la
+    vez), el UNIQUE de pedido_id la conserva y regresa la existente.
+    Regresa (prefactura, se_creo)."""
+    columnas = ["pedido_id", "serie", "folio", "rfc_receptor", "nombre_receptor", "regimen_fiscal_receptor",
+                "cp_fiscal_receptor", "uso_cfdi", "subtotal", "iva", "total", "xml", "estado", "creada"]
+    with transaccion() as con:
+        fila = con.execute(
+            sql.SQL("INSERT INTO prefacturas ({}) VALUES ({}) ON CONFLICT (pedido_id) DO NOTHING RETURNING {}").format(
+                sql.SQL(", ").join(map(sql.Identifier, columnas)),
+                sql.SQL(", ").join(sql.Placeholder() * len(columnas)),
+                sql.SQL(_COLS_PREFACTURA),
+            ),
+            [datos[c] for c in columnas],
+        ).fetchone()
+        if fila is not None:
+            return _prefactura_doc(fila), True
+        existente = con.execute(
+            f"SELECT {_COLS_PREFACTURA} FROM prefacturas WHERE pedido_id = %s", (datos["pedido_id"],)
+        ).fetchone()
+        return _prefactura_doc(existente), False
 
 
 def filtro_pedidos_admin(estado, metodo, buscar) -> tuple[str, list]:

@@ -1,3 +1,4 @@
+/** AdminRecompras — /admin/recompras: suscripciones de recompra y botón para procesar las del día. */
 import { useState } from "react";
 import { useGraphQLQuery } from "../../../hooks/useGraphQLQuery";
 import { graphqlRequest } from "../../../lib/graphql";

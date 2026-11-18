@@ -1,3 +1,4 @@
+/** PasarelaSimulada — /pago/simulado: pasarela de pago de prueba con tarjetas de prueba (aprobada, rechazada, pendiente). */
 import { useState } from "react";
 import { useGraphQLQuery } from "../../hooks/useGraphQLQuery";
 import { useStore } from "../../store/useStore";

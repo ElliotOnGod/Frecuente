@@ -1,3 +1,4 @@
+/** RegistroForm — /registro: creación de cuenta con validación de los datos y enlace al aviso de privacidad. */
 import { useEffect, useState } from "react";
 import { graphqlRequest } from "../../lib/graphql";
 import { useStore } from "../../store/useStore";
@@ -143,6 +144,12 @@ export default function RegistroForm() {
           autoComplete: "new-password",
           required: true,
         })}
+
+        <p className="cf-caption">
+          Al crear tu cuenta aceptas el{" "}
+          <a href={RUTAS.avisoPrivacidad} target="_blank" rel="noreferrer">aviso de privacidad</a>, donde
+          explicamos qué datos recabamos y para qué.
+        </p>
 
         <button className="cf-btn cf-btn--bloque" type="submit" disabled={enviando}>
           {enviando ? "Creando cuenta…" : "Crear cuenta"}

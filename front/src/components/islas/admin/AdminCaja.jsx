@@ -1,3 +1,4 @@
+/** AdminCaja — /admin/caja: valida el código del día de una membresía y registra el canje en el local. */
 import { useRef, useState } from "react";
 import { graphqlRequest } from "../../../lib/graphql";
 import { useGraphQLQuery } from "../../../hooks/useGraphQLQuery";

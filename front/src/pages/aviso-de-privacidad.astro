@@ -1,0 +1,104 @@
+---
+/** /aviso-de-privacidad — Aviso de privacidad integral conforme a la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (RQNF171). */
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { DIRECCION_COMPLETA, LOCAL } from "../lib/local";
+
+const ACTUALIZADO = "17 de noviembre de 2026";
+---
+<BaseLayout
+  titulo="Aviso de privacidad — Frecuente"
+  descripcion="Qué datos personales recaba la tienda en línea de Frecuente Café Bar GDL, para qué los usa, con quién los comparte y cómo ejercer tus derechos ARCO."
+>
+  <article class="cf-contenedor cf-legal">
+    <h1>Aviso de privacidad</h1>
+    <p class="cf-caption">Última actualización: {ACTUALIZADO}</p>
+
+    <h2>1. Identidad y domicilio del responsable</h2>
+    <p>
+      <strong>{LOCAL.nombre}</strong> («FRECUENTE»), con domicilio en {DIRECCION_COMPLETA}, es responsable
+      del tratamiento de los datos personales que recaba por medio de esta tienda en línea, conforme a la
+      Ley Federal de Protección de Datos Personales en Posesión de los Particulares, su Reglamento y los
+      Lineamientos del Aviso de Privacidad.
+    </p>
+
+    <h2>2. Datos personales que recabamos</h2>
+    <ul>
+      <li><strong>Al crear tu cuenta:</strong> nombre completo, correo electrónico, contraseña (se guarda
+        solo derivada con sal, nunca legible) y, si lo das, número de teléfono.</li>
+      <li><strong>Al pedir envío a domicilio:</strong> nombre de quien recibe, teléfono, calle, número,
+        colonia, ciudad, estado, código postal y referencias del domicilio.</li>
+      <li><strong>Si pides prefactura con tus datos fiscales:</strong> RFC, nombre o razón social, régimen
+        fiscal, código postal del domicilio fiscal y uso del CFDI.</li>
+      <li><strong>Al comprar:</strong> los productos, montos, método de pago y estado de tus pedidos,
+        recompras y membresías. No recibimos ni guardamos números de tarjeta: el cobro en línea lo hacen
+        Mercado Pago y PayPal en sus propios sitios.</li>
+    </ul>
+    <p>No recabamos datos personales sensibles.</p>
+
+    <h2>3. Finalidades</h2>
+    <p>Usamos tus datos para estas finalidades, que son necesarias para la relación contigo:</p>
+    <ul>
+      <li>Crear y administrar tu cuenta e identificarte al iniciar sesión.</li>
+      <li>Registrar, cobrar, preparar, enviar y entregar tus pedidos, y darte el número de guía y su rastreo.</li>
+      <li>Generar la prefactura de tus compras.</li>
+      <li>Programar y avisarte de tus recompras, y operar tus membresías y sus canjes en el local.</li>
+      <li>Enviarte correos sobre tu cuenta y tus pedidos (bienvenida, cambio de contraseña, pago
+        confirmado, pedido enviado, membresía activada y recompra lista).</li>
+      <li>Atender aclaraciones, cancelaciones y reembolsos.</li>
+    </ul>
+    <p>No usamos tus datos para publicidad ni para fines distintos de los anteriores.</p>
+
+    <h2>4. Transferencias y encargados</h2>
+    <p>
+      Para cumplir las finalidades anteriores compartimos solo los datos necesarios con estos proveedores,
+      que los tratan por cuenta de FRECUENTE:
+    </p>
+    <ul>
+      <li><strong>Mercado Pago</strong> y <strong>PayPal</strong>: el monto y la referencia del pedido para
+        procesar tu pago.</li>
+      <li><strong>Envia.com</strong>: nombre, teléfono y domicilio de entrega para cotizar el envío, generar
+        la guía y rastrear el paquete con la paquetería.</li>
+      <li><strong>Brevo</strong>: tu nombre y correo electrónico para enviarte los correos de tu cuenta y tus
+        pedidos.</li>
+    </ul>
+    <p>
+      Estas comunicaciones no requieren tu consentimiento porque son necesarias para cumplir la compra que
+      solicitas (artículo 37 de la Ley). No vendemos ni transferimos tus datos a otros terceros, salvo
+      requerimiento de una autoridad competente.
+    </p>
+
+    <h2>5. Derechos ARCO y revocación del consentimiento</h2>
+    <p>
+      Tienes derecho a conocer qué datos tenemos y para qué los usamos (<strong>Acceso</strong>), a
+      corregirlos (<strong>Rectificación</strong>), a pedir que los eliminemos cuando ya no sean necesarios
+      (<strong>Cancelación</strong>) y a oponerte a su uso para fines específicos (<strong>Oposición</strong>).
+      También puedes revocar tu consentimiento.
+    </p>
+    <p>
+      Presenta tu solicitud por escrito en el local, en {DIRECCION_COMPLETA}{LOCAL.correo ? <>, o por correo
+      electrónico a <a href={`mailto:${LOCAL.correo}`}>{LOCAL.correo}</a></> : null}. Incluye tu nombre, el
+      correo de tu cuenta, una copia de tu identificación, qué derecho quieres ejercer y la descripción de
+      los datos. Te respondemos en un máximo de 20 días hábiles y, si procede, lo hacemos efectivo en los
+      15 días hábiles siguientes.
+    </p>
+    <p>
+      Los datos de pedidos ya pagados se conservan el tiempo que exigen las obligaciones fiscales y
+      comerciales, aunque se cancele la cuenta.
+    </p>
+
+    <h2>6. Almacenamiento local del navegador y cookies</h2>
+    <p>
+      La tienda no usa cookies de rastreo ni de publicidad. Guarda en el almacenamiento local de tu
+      navegador (localStorage) tu carrito, tu sesión iniciada, el último pedido y la última dirección de
+      envío que usaste, para que no los pierdas al cambiar de página o cerrar la pestaña. Estos datos se
+      quedan en tu equipo: la sesión y el último pedido se borran al cerrar sesión, y todo se borra al
+      limpiar los datos del sitio en tu navegador.
+    </p>
+
+    <h2>7. Cambios a este aviso</h2>
+    <p>
+      Cualquier cambio a este aviso de privacidad se publicará en esta misma página, con la fecha de su
+      última actualización al inicio.
+    </p>
+  </article>
+</BaseLayout>

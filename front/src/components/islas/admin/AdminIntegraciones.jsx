@@ -1,3 +1,4 @@
+/** AdminIntegraciones — /admin/integraciones: estado de las APIs externas y del servidor MCP, y bitácora de correos. */
 import { useGraphQLQuery } from "../../../hooks/useGraphQLQuery";
 import { RUTAS, fechaCorta } from "../../../lib/formato";
 import { EstadoCorreo, Insignia } from "../Insignia";

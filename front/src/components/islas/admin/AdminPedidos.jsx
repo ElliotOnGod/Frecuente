@@ -1,3 +1,4 @@
+/** AdminPedidos — /admin/pedidos: lista paginada y filtrable de pedidos, con su detalle, cambios de estado, guía de envío y prefactura. */
 import { useEffect, useState } from "react";
 import { graphqlRequest } from "../../../lib/graphql";
 import { useGraphQLQuery } from "../../../hooks/useGraphQLQuery";
@@ -8,6 +9,7 @@ import { EstadoPago, EstadoPedido } from "../Insignia";
 import { Skeleton } from "../Skeleton";
 import SoloAdmin from "./SoloAdmin";
 import EntregaPedido from "../EntregaPedido";
+import PrefacturaPedido from "../PrefacturaPedido";
 
 const CAMPOS = `
   id fecha estado subtotal costoEnvio total referencia piezas suscripcionId
@@ -209,6 +211,11 @@ function Detalle({ pedido, onCerrar, onActualizado }) {
               </button>
             )}
           </div>
+        )}
+
+        {/* RQF94 a RQF96: prefactura de cualquier pedido con pago aprobado */}
+        {["aprobado", "por_reembolsar", "reembolsado"].includes(pago?.estado) && (
+          <PrefacturaPedido key={`${pedido.id}-${pago.estado}`} pedidoId={pedido.id} admin />
         )}
 
         {(acciones.length > 0 || pago?.estado === "por_reembolsar") && (

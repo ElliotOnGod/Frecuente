@@ -1,3 +1,4 @@
+/** ProductDetailModal — detalle de un producto en un modal: galería, métodos, variante y agregar al carrito. */
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useGraphQLQuery } from "../../hooks/useGraphQLQuery";

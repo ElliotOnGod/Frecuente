@@ -4,15 +4,16 @@ schema.py — esquema GraphQL (Strawberry) del e-commerce Frecuente.
 Tipos: Categoria, Producto, Usuario, Pedido, PedidoItem, Pago, Entrega, MetodoPago,
        InicioPago, ResumenAdmin (+ sus series), PaginaPedidos, OpcionEnvio,
        InfoCodigoPostal, Rastreo, Suscripcion, CorreoEnviado, Integracion,
-       Plan, Membresia, Canje, ResumenMembresias, ClienteAdmin, EventoTiempoReal
+       Plan, Membresia, Canje, ResumenMembresias, ClienteAdmin, EventoTiempoReal,
+       Prefactura, CatalogosCfdi
 Query: categorias, categoria, productos(categoriaId, metodo, buscar), producto,
        metodosPreparacion, metodosPago, buscarCodigoPostal, cotizarEnvio, planes,
        yo, misPedidos, pedido, rastrearPedido, misSuscripciones,
-       miMembresia, misMembresias, membresia,
+       miMembresia, misMembresias, membresia, prefactura (dueño o admin), catalogosCfdi,
        resumenAdmin, pedidosAdmin, resumenMembresias, membresiasAdmin,
        membresiaPorCodigo, canjesHoy, clientesAdmin, suscripcionesAdmin,
        correosAdmin, integraciones                                  (admin)
-Mutation: registrarUsuario, iniciarSesion,
+Mutation: registrarUsuario, iniciarSesion, solicitarRecuperacion, restablecerContrasena,
           registrarPedido, iniciarPago, confirmarPago, cancelarMiPedido,
           cambiarMiSuscripcion,
           crearProducto, actualizarProducto, eliminarProducto, subirImagen, (admin)
@@ -28,7 +29,7 @@ Subscription (tiempo real, WebSocket): eventosAdmin (admin),
 Dónde vive cada dato:
   - MongoDB (database.db): categorías, productos, fotos, planes, membresías.
   - PostgreSQL (relacional.py): usuarios, pedidos, pagos, envíos,
-    suscripciones de recompra y bitácora de correos.
+    suscripciones de recompra, bitácora de correos y prefacturas (CFDI).
 
 Sesión: el front manda  Authorization: Bearer <token>  (ver auth.py).
   - Catálogo, metodosPago, buscarCodigoPostal y cotizarEnvio: público.
@@ -59,12 +60,19 @@ from strawberry.types import Info
 
 import correos
 import envios
+from cfdi import catalogos as cat_sat
+from cfdi import prefactura as cfdi_prefactura
 import eventos
 import relacional
 from auth import (
     JWT_SECRET,
+    RECUPERAR_MINUTOS,
+    EnlaceInvalido,
     SesionInvalida,
     crear_token,
+    crear_token_recuperacion,
+    huella_password,
+    leer_token_recuperacion,
     gastar_tiempo_de_verificacion,
     hashear_password,
     token_de_request,
@@ -121,6 +129,9 @@ class Producto:
     variantes: List[str]  # opciones que elige el cliente (mismo precio y stock)
     metodos: List[str]    # métodos de preparación (filtro del catálogo)
     peso_kg: float        # para cotizar el envío
+    tasa_iva: float       # 0 (alimentos) o 0.16 (accesorios), para la prefactura
+    clave_prod_serv: str  # clave de producto o servicio del SAT (c_ClaveProdServ)
+    clave_unidad: str     # clave de unidad del SAT (c_ClaveUnidad)
 
     @strawberry.field
     def categoria(self) -> Optional["Categoria"]:
@@ -323,6 +334,9 @@ def _producto(doc: dict | None) -> Producto | None:
         variantes=list(d.get("variantes") or []),
         metodos=list(d.get("metodos") or []),
         peso_kg=float(d.get("peso_kg") or envios.PESO_DEFECTO_KG),
+        tasa_iva=float(d.get("tasa_iva") or 0.0),
+        clave_prod_serv=str(d.get("clave_prod_serv") or ""),
+        clave_unidad=str(d.get("clave_unidad") or ""),
     )
 
 
@@ -366,6 +380,75 @@ def _pedido(doc: dict | None) -> Pedido | None:
         items_doc=doc.get("items", []),
         pago_doc=doc.get("pago"),
         entrega_doc=doc.get("entrega"),
+    )
+
+
+@strawberry.type
+class ClaveSat:
+    clave: str
+    descripcion: str
+
+
+@strawberry.type
+class CatalogosCfdi:
+    """Claves del SAT que aceptan los formularios (pago y productos)."""
+    regimenes_fiscales: List[ClaveSat]
+    usos_cfdi: List[ClaveSat]
+    claves_prod_serv: List[ClaveSat]
+    claves_unidad: List[ClaveSat]
+    tasas_iva: List[float]
+
+
+PREFACTURA_DISPONIBLE = ("validada", "timbrada")
+
+
+@strawberry.type
+class Prefactura:
+    """Prefactura CFDI de un pedido pagado (tabla prefacturas)."""
+    id: int
+    pedido_id: int
+    serie: str
+    folio: int
+    rfc_receptor: str
+    nombre_receptor: str
+    regimen_fiscal_receptor: str
+    cp_fiscal_receptor: str
+    uso_cfdi: str
+    subtotal: float
+    iva: float
+    total: float
+    estado: str               # generada | validada | timbrada | error
+    uuid_timbre: Optional[str]
+    creada: str
+    errores: List[str]        # solo para el administrador cuando estado = error
+
+    @strawberry.field
+    def disponible(self) -> bool:
+        """RQNF118: solo una prefactura validada (o timbrada) se puede descargar."""
+        return self.estado in PREFACTURA_DISPONIBLE
+
+    @strawberry.field
+    def regimen_descripcion(self) -> str:
+        return cat_sat.REGIMEN_FISCAL.get(self.regimen_fiscal_receptor, "")
+
+    @strawberry.field
+    def uso_descripcion(self) -> str:
+        return cat_sat.USO_CFDI.get(self.uso_cfdi, "")
+
+
+def _prefactura(doc: dict | None, con_errores: bool = False) -> Prefactura | None:
+    if doc is None:
+        return None
+    errores = []
+    if con_errores and doc["estado"] == "error":
+        errores = cfdi_prefactura.validar(doc["xml"], doc["total"]) or ["No se pudo construir el XML"]
+    return Prefactura(
+        id=doc["id"], pedido_id=doc["pedido_id"], serie=doc["serie"], folio=doc["folio"],
+        rfc_receptor=doc["rfc_receptor"], nombre_receptor=doc["nombre_receptor"],
+        regimen_fiscal_receptor=doc["regimen_fiscal_receptor"], cp_fiscal_receptor=doc["cp_fiscal_receptor"],
+        uso_cfdi=doc["uso_cfdi"], subtotal=doc["subtotal"], iva=doc["iva"], total=doc["total"],
+        estado=doc["estado"], uuid_timbre=doc.get("uuid_timbre"),
+        creada=_fecha_txt(doc["creada"]) or "", errores=errores,
     )
 
 
@@ -816,6 +899,10 @@ class ProductoInput:
     variantes: List[str] = strawberry.field(default_factory=list)
     metodos: List[str] = strawberry.field(default_factory=list)
     peso_kg: float = 0.5
+    # Datos para la prefactura; si no vienen, se usan los de su categoría
+    tasa_iva: Optional[float] = None
+    clave_prod_serv: Optional[str] = None
+    clave_unidad: Optional[str] = None
 
 
 @strawberry.input
@@ -831,6 +918,9 @@ class ProductoUpdateInput:
     variantes: Optional[List[str]] = None
     metodos: Optional[List[str]] = None
     peso_kg: Optional[float] = None
+    tasa_iva: Optional[float] = None
+    clave_prod_serv: Optional[str] = None
+    clave_unidad: Optional[str] = None
 
 
 @strawberry.input
@@ -865,12 +955,23 @@ class CotizarEnvioInput:
 
 
 @strawberry.input
+class DatosFiscalesInput:
+    """RQF90: datos del receptor para la prefactura (opcionales en el pedido)."""
+    rfc: str = ""
+    nombre: str = ""            # nombre o razón social
+    regimen_fiscal: str = ""    # c_RegimenFiscal
+    cp_fiscal: str = ""         # código postal del domicilio fiscal
+    uso_cfdi: str = ""          # c_UsoCFDI
+
+
+@strawberry.input
 class PedidoInput:
     # Ya no se manda usuario_id: el pedido es del usuario de la sesión
     items: List[ItemInput]
     metodo_pago: str = "mercadopago"
     entrega: Optional[EntregaInput] = None          # sin entrega = recoger en el local
     recompra_cada_dias: Optional[int] = None        # 15, 30 o 60: repetir este pedido
+    datos_fiscales: Optional[DatosFiscalesInput] = None  # sin datos = público en general
 
 
 @strawberry.input
@@ -928,6 +1029,10 @@ class RegistroInput:
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 PASSWORD_MIN = 8
+MENSAJE_PASSWORD_CORTA = f"La contraseña debe tener al menos {PASSWORD_MIN} caracteres"
+# RQNF11: la misma respuesta exista o no la cuenta (no revela qué correos están registrados)
+MENSAJE_RECUPERACION = "Si el correo tiene una cuenta, te enviamos un enlace para cambiar tu contraseña."
+MENSAJE_ENLACE_INVALIDO = "El enlace para cambiar tu contraseña no es válido o ya venció. Pide uno nuevo."
 
 
 def _token_de_info(info: Info) -> str | None:
@@ -1052,6 +1157,58 @@ def _avisar_pago_aprobado(pedido: dict) -> None:
     cliente = relacional.usuario(pedido["usuario_id"])
     if cliente:
         correos.pedido_confirmado(pedido, cliente)
+    _generar_prefactura(pedido)
+
+
+def _generar_prefactura(pedido: dict) -> dict | None:
+    """RQF91: genera la prefactura cuando se aprueba el pago del pedido.
+
+    Es la única función que la genera; la llaman los dos caminos que aprueban
+    un pago: _aplicar_resultado_pago (Mercado Pago, PayPal, pasarela simulada
+    y aviso de pago) y cambiar_estado_pedido (el administrador confirma una
+    transferencia SPEI o un cobro en efectivo).
+
+    Construye el XML con los datos fiscales guardados con el pedido (o público
+    en general, RQNF112), lo valida (RQNF113 a RQNF117) y lo guarda como
+    «validada». Si una validación falla queda como «error»: el cliente no la
+    ve ni la descarga y el administrador ve los errores en el panel (RQNF118).
+    Nunca interrumpe el pago: un error aquí solo se registra."""
+    try:
+        existente = relacional.prefactura(pedido["_id"])
+        if existente is not None:
+            return existente  # el aviso de pago llegó dos veces
+        ids = [it["producto_id"] for it in pedido["items"]]
+        productos = {p["_id"]: p for p in db.productos.find({"_id": {"$in": ids}})}
+        receptor = cfdi_prefactura.receptor_de(pedido.get("datos_fiscales"), cfdi_prefactura.emisor()["cp"])
+        try:
+            armado = cfdi_prefactura.construir(pedido, productos, pedido.get("datos_fiscales"))
+            errores = cfdi_prefactura.validar(armado["xml"], pedido["total"])
+            xml, subtotal, iva, total = armado["xml"], armado["subtotal"], armado["iva"], armado["total"]
+        except Exception as e:  # datos que ni siquiera permiten armar el XML
+            errores = [f"No se pudo construir el XML: {e}"]
+            xml, subtotal, iva, total = "", pedido["total"], 0, pedido["total"]
+        doc, _ = relacional.crear_prefactura({
+            "pedido_id": pedido["_id"],
+            "serie": cfdi_prefactura.SERIE,
+            "folio": pedido["_id"],
+            "rfc_receptor": receptor["rfc"],
+            "nombre_receptor": receptor["nombre"],
+            "regimen_fiscal_receptor": receptor["regimen"],
+            "cp_fiscal_receptor": receptor["cp"],
+            "uso_cfdi": receptor["uso"],
+            "subtotal": subtotal,
+            "iva": iva,
+            "total": total,
+            "xml": xml,
+            "estado": "error" if errores else "validada",
+            "creada": _ahora(),
+        })
+        if errores:
+            print(f"[frecuente] Prefactura del pedido #{pedido['_id']} con errores: {'; '.join(errores)[:500]}")
+        return doc
+    except Exception as e:
+        print(f"[frecuente] No se pudo guardar la prefactura del pedido #{pedido.get('_id')}: {e}")
+        return None
 
 
 def _dinero(n: float) -> str:
@@ -1495,6 +1652,7 @@ def _crear_pedido(
     *,
     recompra_cada_dias: int | None = None,
     suscripcion_id: int | None = None,
+    datos_fiscales: dict | None = None,
     con=None,
 ) -> dict:
     """Descuenta stock en MongoDB y guarda el pedido en PostgreSQL.
@@ -1577,6 +1735,7 @@ def _crear_pedido(
                 pago=pago,
                 entrega=columnas_envio,
                 suscripcion_id=sid,
+                datos_fiscales=datos_fiscales,
             )
 
         if con is not None:
@@ -1890,6 +2049,35 @@ class Query:
     def membresia(self, info: Info, id: int) -> Optional[Membresia]:
         return _membresia(_membresia_propia(usuario_actual(info), id))
 
+    # ---------------- prefactura CFDI ----------------
+
+    @strawberry.field
+    def prefactura(self, info: Info, pedido_id: int) -> Optional[Prefactura]:
+        """Prefactura de un pedido. El cliente solo ve la de sus pedidos y solo
+        si está validada (RQNF118, RQNF119); el administrador ve la de
+        cualquier pedido, con sus errores si los hay (RQF95)."""
+        usuario = usuario_actual(info)
+        _pedido_propio(usuario, pedido_id)  # error si no es suyo (y no es admin)
+        doc = relacional.prefactura(pedido_id)
+        es_admin = usuario.get("rol") == "admin"
+        if doc is None or (not es_admin and doc["estado"] not in PREFACTURA_DISPONIBLE):
+            return None
+        return _prefactura(doc, con_errores=es_admin)
+
+    @strawberry.field
+    def catalogos_cfdi(self) -> CatalogosCfdi:
+        """Claves del SAT para el formulario de datos fiscales y el de productos."""
+        def claves(catalogo):
+            return [ClaveSat(**c) for c in cat_sat.lista(catalogo)]
+
+        return CatalogosCfdi(
+            regimenes_fiscales=claves(cat_sat.REGIMEN_FISCAL),
+            usos_cfdi=claves(cat_sat.USO_CFDI),
+            claves_prod_serv=claves(cat_sat.CLAVE_PROD_SERV),
+            claves_unidad=claves(cat_sat.CLAVE_UNIDAD),
+            tasas_iva=list(cat_sat.TASAS_IVA),
+        )
+
     @strawberry.field
     def resumen_membresias(self, info: Info) -> ResumenMembresias:
         requiere_admin(info)
@@ -2005,6 +2193,29 @@ def _limpiar_metodos(metodos: List[str]) -> List[str]:
     return list(dict.fromkeys(metodos))
 
 
+def _datos_fiscales_producto(tasa_iva, clave_prod_serv, clave_unidad, categoria_id: int | None = None) -> dict:
+    """Tasa de IVA y claves SAT de un producto (RQNF116, RQNF115). Al crear, lo
+    que no venga se toma de su categoría; al editar, solo se guarda lo que venga."""
+    defecto = cat_sat.POR_CATEGORIA.get(categoria_id, cat_sat.POR_DEFECTO) if categoria_id is not None else {}
+    datos = {}
+    tasa = tasa_iva if tasa_iva is not None else defecto.get("tasa_iva")
+    if tasa is not None:
+        if round(float(tasa), 2) not in cat_sat.TASAS_IVA:
+            raise ValueError("La tasa de IVA del producto debe ser 0 % o 16 %")
+        datos["tasa_iva"] = round(float(tasa), 2)
+    clave = (clave_prod_serv or "").strip() or defecto.get("clave_prod_serv")
+    if clave is not None:
+        if clave not in cat_sat.CLAVE_PROD_SERV:
+            raise ValueError("Elige una clave de producto o servicio del catálogo del SAT")
+        datos["clave_prod_serv"] = clave
+    unidad = (clave_unidad or "").strip().upper() or defecto.get("clave_unidad")
+    if unidad is not None:
+        if unidad not in cat_sat.CLAVE_UNIDAD:
+            raise ValueError("Elige una clave de unidad del catálogo del SAT")
+        datos["clave_unidad"] = unidad
+    return datos
+
+
 def _validar_peso(peso_kg: float) -> float:
     if not 0 < peso_kg <= 30:
         raise ValueError("El peso debe estar entre 0 y 30 kg (sirve para cotizar el envío)")
@@ -2025,7 +2236,7 @@ class Mutation:
         if not EMAIL_RE.match(email):
             raise ValueError("Ese correo no parece válido")
         if len(input.password) < PASSWORD_MIN:
-            raise ValueError(f"La contraseña debe tener al menos {PASSWORD_MIN} caracteres")
+            raise ValueError(MENSAJE_PASSWORD_CORTA)
         # Teléfono opcional; si viene, exactamente 10 dígitos (se revisa aquí
         # también porque alguien puede mandar la petición sin pasar por el front)
         telefono = input.telefono.strip()
@@ -2059,6 +2270,37 @@ class Mutation:
             raise ValueError("Tu cuenta está desactivada. Escríbenos si crees que es un error")
         return AuthPayload(token=crear_token(usuario["_id"]), usuario=_usuario(usuario))
 
+    @strawberry.mutation
+    def solicitar_recuperacion(self, correo: str) -> str:
+        """RQF4: manda al correo un enlace para cambiar la contraseña.
+        RQNF11: responde lo mismo tenga o no cuenta el correo.
+        RQNF12: el enlace vence RECUPERAR_MINUTOS (30) después de emitirse."""
+        usuario = relacional.usuario_por_email(correo.strip().lower())
+        if usuario is not None and usuario["activo"]:
+            token = crear_token_recuperacion(usuario["_id"], usuario["password_hash"])
+            correos.recuperacion(usuario, token, RECUPERAR_MINUTOS)
+        return MENSAJE_RECUPERACION
+
+    @strawberry.mutation
+    def restablecer_contrasena(self, token: str, contrasena: str) -> str:
+        """RQF5: fija la contraseña nueva con el enlace de recuperación.
+        RQNF13: el enlace sirve una vez (su huella deja de coincidir con el hash nuevo).
+        RQNF14: mínimo 8 caracteres, con el mismo mensaje que el registro."""
+        if len(contrasena) < PASSWORD_MIN:
+            raise ValueError(MENSAJE_PASSWORD_CORTA)
+        try:
+            usuario_id, huella = leer_token_recuperacion(token)
+        except EnlaceInvalido:
+            raise ValueError(MENSAJE_ENLACE_INVALIDO)
+        usuario = relacional.usuario(usuario_id)
+        if usuario is None or not usuario["activo"] or not hmac.compare_digest(
+            huella, huella_password(usuario["password_hash"])
+        ):
+            raise ValueError(MENSAJE_ENLACE_INVALIDO)
+        if not relacional.cambiar_password(usuario_id, usuario["password_hash"], hashear_password(contrasena)):
+            raise ValueError(MENSAJE_ENLACE_INVALIDO)  # otra petición usó el enlace al mismo tiempo
+        return "Listo, tu contraseña cambió. Ya puedes iniciar sesión."
+
     # ---------------- catálogo (solo admin) ----------------
 
     @strawberry.mutation
@@ -2087,6 +2329,7 @@ class Mutation:
             "variantes": variantes,
             "metodos": _limpiar_metodos(input.metodos),
             "peso_kg": _validar_peso(input.peso_kg),
+            **_datos_fiscales_producto(input.tasa_iva, input.clave_prod_serv, input.clave_unidad, input.categoria_id),
         }
         db.productos.insert_one(doc)
         return _producto(doc)
@@ -2127,6 +2370,7 @@ class Mutation:
             cambios["metodos"] = _limpiar_metodos(input.metodos)
         if input.peso_kg is not None:
             cambios["peso_kg"] = _validar_peso(input.peso_kg)
+        cambios.update(_datos_fiscales_producto(input.tasa_iva, input.clave_prod_serv, input.clave_unidad))
 
         try:
             if cambios:
@@ -2209,13 +2453,22 @@ class Mutation:
         if input.recompra_cada_dias and input.metodo_pago == "efectivo":
             raise ValueError("La recompra se paga en línea o por transferencia, no en efectivo")
 
+        # RQF90: datos fiscales opcionales para la prefactura (RQNF111 valida el RFC)
+        try:
+            datos_fiscales = cfdi_prefactura.limpiar_datos_fiscales(
+                strawberry.asdict(input.datos_fiscales) if input.datos_fiscales else None
+            )
+        except cfdi_prefactura.DatosFiscalesInvalidos as e:
+            raise ValueError(str(e))
+
         cantidades = _juntar_items(input.items)
         productos = _productos_de(cantidades)
         kg = _peso(_normalizar_variantes(cantidades, productos), productos)
         entrega = _resolver_entrega(input.entrega, input.metodo_pago, kg)
 
         r = _crear_pedido(
-            usuario, input.items, input.metodo_pago, entrega, recompra_cada_dias=input.recompra_cada_dias
+            usuario, input.items, input.metodo_pago, entrega, recompra_cada_dias=input.recompra_cada_dias,
+            datos_fiscales=datos_fiscales,
         )
         pedido = relacional.pedido(r["_id"])
         _despues_de_crear(pedido, usuario, r["por_producto"])
@@ -2431,6 +2684,9 @@ class Mutation:
         cliente = relacional.usuario(doc["usuario_id"])
         if cliente and cambios_pago and estado == "pagado":
             correos.pedido_confirmado(doc, cliente)
+        if cambios_pago:
+            # El administrador aprobó el pago (transferencia o efectivo): RQF91
+            _generar_prefactura(doc)
         if cliente and estado == "enviado" and (doc.get("entrega") or {}).get("tipo") == "domicilio":
             correos.pedido_enviado(doc, cliente)
         return _pedido(doc)

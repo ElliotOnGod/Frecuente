@@ -1,3 +1,4 @@
+/** SoloAdmin — muestra el contenido del panel solo si la sesión es de un administrador. */
 import { useStore } from "../../../store/useStore";
 import { RUTAS } from "../../../lib/formato";
 

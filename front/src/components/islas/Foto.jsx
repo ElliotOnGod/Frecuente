@@ -1,3 +1,4 @@
+/** Foto — imagen de producto o categoría con carga diferida y respaldo con el icono de su categoría. */
 import { useState } from "react";
 import { iconoDe } from "../../lib/formato";
 import { srcsetImagen, urlImagen } from "../../lib/imagenes";

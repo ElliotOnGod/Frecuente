@@ -1,3 +1,4 @@
+/** AdminProductos — /admin/productos: inventario, alta, edición (fotos, variantes, métodos, peso, IVA y claves SAT) y baja de productos. */
 import { useEffect, useRef, useState } from "react";
 import { graphqlRequest } from "../../../lib/graphql";
 import { pesos } from "../../../lib/formato";
@@ -10,11 +11,16 @@ const QUERY = `
   query Inventario {
     categorias { id nombre }
     metodosPreparacion { clave nombre }
-    productos { id nombre descripcion precio stock imagenUrl imagenes categoriaId varianteNombre variantes metodos pesoKg }
+    catalogosCfdi { clavesProdServ { clave descripcion } clavesUnidad { clave descripcion } }
+    productos {
+      id nombre descripcion precio stock imagenUrl imagenes categoriaId varianteNombre variantes metodos pesoKg
+      tasaIva claveProdServ claveUnidad
+    }
   }
 `;
 
-const CAMPOS = "id nombre descripcion precio stock imagenUrl imagenes categoriaId varianteNombre variantes metodos pesoKg";
+const CAMPOS =
+  "id nombre descripcion precio stock imagenUrl imagenes categoriaId varianteNombre variantes metodos pesoKg tasaIva claveProdServ claveUnidad";
 
 const MUTATION_CREAR = `
   mutation Crear($input: ProductoInput!) { crearProducto(input: $input) { ${CAMPOS} } }
@@ -32,6 +38,8 @@ const STOCK_BAJO = 10;
 const VACIO = {
   nombre: "", descripcion: "", precio: "", stock: "", categoriaId: "",
   varianteNombre: "Molienda", variantes: "", metodos: [], pesoKg: "0.5",
+  // Prefactura: vacío = lo que corresponde a su categoría (lo decide el servidor)
+  tasaIva: "", claveProdServ: "", claveUnidad: "",
 };
 
 // Variantes en el formulario: una por línea ("Grano entero", "Molido para espresso"…)
@@ -167,7 +175,7 @@ function GestorImagenes({ imagenes, onCambiar, categoriaId, onSubiendo }) {
 }
 
 /** Formulario para crear o editar (en un modal). */
-function FormularioProducto({ producto, categorias, metodos, onCerrar, onGuardado }) {
+function FormularioProducto({ producto, categorias, metodos, catalogosSat, onCerrar, onGuardado }) {
   const editando = Boolean(producto);
   const [f, setF] = useState(
     editando
@@ -181,6 +189,9 @@ function FormularioProducto({ producto, categorias, metodos, onCerrar, onGuardad
           variantes: (producto.variantes ?? []).join(SALTO),
           metodos: producto.metodos ?? [],
           pesoKg: String(producto.pesoKg ?? 0.5),
+          tasaIva: producto.tasaIva == null ? "" : String(producto.tasaIva),
+          claveProdServ: producto.claveProdServ ?? "",
+          claveUnidad: producto.claveUnidad ?? "",
         }
       : { ...VACIO, categoriaId: String(categorias[0]?.id ?? "") }
   );
@@ -219,6 +230,9 @@ function FormularioProducto({ producto, categorias, metodos, onCerrar, onGuardad
       variantes: variantesDeTexto(f.variantes),
       metodos: f.metodos,
       pesoKg: Number(f.pesoKg),
+      tasaIva: f.tasaIva === "" ? null : Number(f.tasaIva),
+      claveProdServ: f.claveProdServ || null,
+      claveUnidad: f.claveUnidad || null,
     };
     try {
       const data = editando
@@ -306,6 +320,38 @@ function FormularioProducto({ producto, categorias, metodos, onCerrar, onGuardad
           {entrada("pesoKg", "Peso con empaque (kg)", { type: "number", min: 0.01, step: "0.05", inputMode: "decimal" })}
 
           <fieldset className="cf-campo">
+            <legend className="cf-label">Datos para la prefactura</legend>
+            <div className="cf-form-fila">
+              <div className="cf-campo">
+                <label className="cf-label" htmlFor="prod-iva">Tasa de IVA</label>
+                <select id="prod-iva" className="cf-input" value={f.tasaIva} onChange={campo("tasaIva")}>
+                  {!editando && <option value="">Según la categoría</option>}
+                  <option value="0">0 % (alimentos)</option>
+                  <option value="0.16">16 %</option>
+                </select>
+              </div>
+              <div className="cf-campo">
+                <label className="cf-label" htmlFor="prod-unidad">Clave de unidad (SAT)</label>
+                <select id="prod-unidad" className="cf-input" value={f.claveUnidad} onChange={campo("claveUnidad")}>
+                  {!editando && <option value="">Según la categoría</option>}
+                  {(catalogosSat?.clavesUnidad ?? []).map((c) => (
+                    <option key={c.clave} value={c.clave}>{c.clave} · {c.descripcion}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="cf-campo">
+              <label className="cf-label" htmlFor="prod-clave">Clave de producto o servicio (SAT)</label>
+              <select id="prod-clave" className="cf-input" value={f.claveProdServ} onChange={campo("claveProdServ")}>
+                {!editando && <option value="">Según la categoría</option>}
+                {(catalogosSat?.clavesProdServ ?? []).map((c) => (
+                  <option key={c.clave} value={c.clave}>{c.clave} · {c.descripcion}</option>
+                ))}
+              </select>
+            </div>
+          </fieldset>
+
+          <fieldset className="cf-campo">
             <legend className="cf-label">Métodos de preparación (filtro de la tienda)</legend>
             <div className="cf-chips">
               {metodos.map((m) => {
@@ -379,6 +425,7 @@ function Contenido() {
   const [borrando, setBorrando] = useState(null);
   const [stockRapido, setStockRapido] = useState({});
   const [metodos, setMetodos] = useState([]);
+  const [catalogosSat, setCatalogosSat] = useState(null);
 
   useEffect(() => {
     graphqlRequest(QUERY)
@@ -386,6 +433,7 @@ function Contenido() {
         setProductos(d.productos);
         setCategorias(d.categorias);
         setMetodos(d.metodosPreparacion);
+        setCatalogosSat(d.catalogosCfdi);
       })
       .catch((e) => setError(e.message));
   }, []);
@@ -560,6 +608,7 @@ function Contenido() {
           producto={editando}
           categorias={categorias}
           metodos={metodos}
+          catalogosSat={catalogosSat}
           onCerrar={() => setEditando(undefined)}
           onGuardado={guardado}
         />

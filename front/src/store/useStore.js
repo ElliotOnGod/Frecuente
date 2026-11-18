@@ -1,3 +1,4 @@
+/** useStore — store global (Zustand) con sesión, carrito y último pedido, guardado en el navegador. */
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import * as reglas from "../lib/carrito";

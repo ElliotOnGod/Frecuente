@@ -1,0 +1,12 @@
+---
+/** /recuperar — Recuperación de contraseña: pedir el enlace por correo (RQF4) y, con ?token=, fijar la contraseña nueva (RQF5). */
+import BaseLayout from "../layouts/BaseLayout.astro";
+import RecuperarContrasena from "../components/islas/RecuperarContrasena.jsx";
+---
+<BaseLayout titulo="Recupera tu contraseña — Frecuente">
+  <div class="cf-contenedor">
+    <RecuperarContrasena client:only="react">
+      <h1 slot="fallback">Recupera tu contraseña</h1>
+    </RecuperarContrasena>
+  </div>
+</BaseLayout>

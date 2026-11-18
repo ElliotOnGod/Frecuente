@@ -1,3 +1,4 @@
+/** CartButton — botón del carrito con el contador de piezas (TopBar). */
 import { useStore } from "../../store/useStore";
 import { RUTAS } from "../../lib/formato";
 

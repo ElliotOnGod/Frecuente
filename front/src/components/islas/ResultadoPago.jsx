@@ -1,3 +1,4 @@
+/** ResultadoPago — /pago/resultado: confirma con la pasarela el pago de un pedido o una membresía al regresar. */
 import { useEffect, useState } from "react";
 import { useStore } from "../../store/useStore";
 import { RUTAS } from "../../lib/formato";

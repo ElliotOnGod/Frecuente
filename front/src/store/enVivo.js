@@ -1,3 +1,4 @@
+/** enVivo — store (Zustand) de los avisos en tiempo real del panel de administración. */
 import { create } from "zustand";
 
 /**

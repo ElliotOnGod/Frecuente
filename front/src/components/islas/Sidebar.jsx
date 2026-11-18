@@ -1,3 +1,4 @@
+/** Sidebar — navegación rápida entre las categorías del catálogo. */
 import { RUTAS } from "../../lib/formato";
 
 /** Sidebar — navegación rápida entre categorías. */

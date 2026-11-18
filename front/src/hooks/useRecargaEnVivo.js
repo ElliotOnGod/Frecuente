@@ -1,3 +1,4 @@
+/** useRecargaEnVivo — contador que sube con cada aviso en vivo para recargar una consulta. */
 import { useEffect, useRef, useState } from "react";
 import { useEnVivo } from "../store/enVivo";
 

@@ -1,3 +1,4 @@
+/** AvisosEnVivo — avisos en tiempo real del panel (Subscription eventosAdmin) con su indicador de conexión. */
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../../../store/useStore";
 import { useEnVivo } from "../../../store/enVivo";

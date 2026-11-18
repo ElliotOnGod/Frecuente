@@ -1,3 +1,4 @@
+/** Graficas — gráficas SVG del resumen de ventas (por día, por método y pedidos por estado). */
 import { useEffect, useState } from "react";
 import { diaCorto, pesos, pesosCortos } from "../../../lib/formato";
 

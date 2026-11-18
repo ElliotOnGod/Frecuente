@@ -1,3 +1,4 @@
+/** MiMembresia — /mi-membresia: membresía del cliente, su código del día y sus canjes. */
 import { useEffect, useRef, useState } from "react";
 import { useGraphQLQuery } from "../../hooks/useGraphQLQuery";
 import { useSuscripcion } from "../../hooks/useSuscripcion";
